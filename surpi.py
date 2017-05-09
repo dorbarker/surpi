@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
+import os
 import argparse
+import subprocess
+from multiprocessing import cpu_count
 
 def arguments():
 
@@ -104,9 +107,114 @@ def arguments():
 
     # Reference Data
 
+    parser.add_argument('--snap-subtract-dir',
+                        default='reference/hg19',
+                        help='Directory containing the SNAP-indexed \
+                             database of the host genome for the \
+                             subtraction phase. SURPI will subtract \
+                             all SNAP databases found in this directory. \
+                             [reference/hg19]')
+
+    parser.add_argument('--snap-comprehensive-dir',
+                        default='reference/COMP_SNAP',
+                        help='Directory for SNAP-indexed databases of \
+                             NCBI NT. Directory must contain *only* SNAP \
+                             indexed databases [reference/COMP_SNAP]')
+
+    parser.add_argument('--snap-fast-dir',
+                        default='reference/FAST_SNAP',
+                        help='Directory for FAST-mode SNAP databases \
+                             [reference/FAST_SNAP]')
+
+    # update if create_taxonomy_db.sh changes
+    parser.add_argument('--tax-ref-dir',
+                        default='reference/taxonomy',
+                        help='Directory containing 3 SQLite databases \
+                             created by "create_taxonomy_db.sh" \
+                             [reference/taxonomy]')
+
+    parser.add_argument('--rapsearch-viral',
+                        default='reference/RAPSearch/rapsearch_viral_db',
+                        help='Directory containing the RAPSearch \
+                             viral database \
+                             [reference/RAPSearch/rapsearch_viral_db]')
+
+    parser.add_argument('--rapsearch-nr',
+                        default='reference/RAPSearch/rapsearch_nr_db',
+                        help='Directory containing the RAPSearch NCBI NR \
+                             database [reference/RAPSearch/rapsearch_nr_db')
+
+    parser.add_argument('--snap-riboclean',
+                        default='reference/RiboClean_SNAP',
+                        help='SNAP RiboClean directory \
+                             [reference/RiboClean_SNAP]')
+
+    parser.add_argument('--cores',
+                        type=int,
+                        default=cpu_count(),
+                        help='CPU cores to use [{}]'.format(cpu_count()))
+
+    parser.add_argument('--temp',
+                        default='/tmp/',
+                        help='Temporary working directory [/tmp/]')
+
+    parser.add_argument('--cache-reset',
+                        type=int,
+                        default=0,
+                        help='dropcache if free RAM (GB) falls below this \
+                             value. If 0, then the cache is never reset [0]')
+
+    # TODO: Add AWS-related values
 
     return parser.parse_args()
 
+def ensure_fastq(inputfile, mode):
+    '''If mode is "fasta", convert inputfile to fastq.
+
+    In either case, guarantee that file extension is ".fastq"
+    '''
+
+    assert mode in ('fastq', 'fasta'), 'Mode must be "fasta" or "fastq"'
+
+    name, ext = os.path.splitext(inputfile)
+
+    fq_name = name + '.fastq'
+
+    if mode == 'fasta':
+
+        cmd = ('fasta_to_fastq', inputfile)
+
+        fastq = subprocess.check_output(cmd, universal_newlines=True)
+
+        with open(fq_name, 'w') as f:
+            f.write(fastq)
+
+    else:
+
+        os.symlink(inputfile, fq_name)
+
+def get_memory_limit():
+    '''Return a usable memory limit in GB based on system RAM'''
+
+    cmd = ('grep', 'MemTotal', '/proc/meminfo')
+
+    meminfo = subprocess.check_output(cmd, universal_newlines=True)
+
+    total_memory = int(meminfo.split()[1])
+
+    if total_memory >= 500000000:
+
+        memory_limit = 200
+
+    elif total_memory >= 200000000:
+
+        memory_limit = 150
+
+    else:
+
+        memory_limit = 50
+
+    return memory_limit
 def main():
 
     args = arguments()
