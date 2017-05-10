@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
+import glob
 import os
 import argparse
 import subprocess
 from multiprocessing import cpu_count
+import sys
 
 def arguments():
 
@@ -215,10 +217,65 @@ def get_memory_limit():
         memory_limit = 50
 
     return memory_limit
+
+def program_versions():
+    '''Return the versions of each external dependency as a dict
+
+    {program: version}
+    '''
+
+    def run_shell(cmd):
+        out = subprocess.check_output(cmd, shell=True, universal_newlines=True)
+        return out.strip()
+
+    version_cmds = {
+        'gt':        "gt -version | head -1 | awk '{print $3}'",
+        'seqtk':     "seqtk 2>&1 | head -3 | tail -1 | awk '{print $2}'",
+        'cutadapt':  "cutadapt --version",
+        'prinseqlite':  "prinseq-lite.pl --version 2>&1 | awk '{print $2}'",
+        'snap':      "snap 2>&1 | grep version | awk '{print $5}'",
+        'snap-dev':  "snap-dev 2>&1 | grep version | awk '{print $5}'",
+        'rapsearch': "rapsearch 2>&1 | head -2 | tail -1 | awk '{print $2}'",
+        'abyss_pe':  "abyss-pe version | head -2 | tail -1 | awk '{print $3}'",
+        'abyss_p':   "ABYSS-P  --version | head -1 | awk '{print $3}'",
+        'minimo':    "Minimo -h | tail -2 | awk '{print $2}'"
+        }
+
+    versions = {prog: run_shell(cmd) for prog, cmd in version_cmds.items()}
+
+    return versions
+
+def verify_databases(*db_dirs):
+    '''Verifies SNAP databases.
+
+    If databases are malformed, print which are broken and exit with code 65.
+    '''
+
+    def verify_database(db_dir):
+
+        db_dir_path = os.path.abspath(db_dir)
+        genomes_glob = os.path.join(db_dir_path, '*', 'Genome')
+
+        return all(os.access(f, os.F_OK) for f in glob.glob(genomes_glob))
+
+    malformed = [db_dir for db_dir in db_dirs if not verify_database(db_dir)]
+
+    if malformed:
+
+        print('The following databases are malformed:', file=sys.stderr)
+
+        for mal in malfored:
+            print(mal, file=sys.stderr)
+
+        sys.exit(65)
+
+    else:
+        print('Databases are good.', file=sys.stderr)
+
 def main():
 
     args = arguments()
 
-
+    print(program_versions())
 if __name__ == '__main__':
     main()
