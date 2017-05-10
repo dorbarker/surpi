@@ -218,7 +218,7 @@ def get_memory_limit():
 
     return memory_limit
 
-def program_versions():
+def check_program_versions():
     '''Return the versions of each external dependency as a dict
 
     {program: version}
@@ -243,9 +243,20 @@ def program_versions():
 
     versions = {prog: run_shell(cmd) for prog, cmd in version_cmds.items()}
 
+    malformed = [k for k, v in versions if v == '']
+
+    if malformed:
+
+        print('The following dependencies are missing:', file=sys.stderr)
+
+        for mal in malfored:
+            print(mal, file=sys.stderr)
+
+        sys.exit(65)
+
     return versions
 
-def verify_databases(*db_dirs):
+def verify_snap_databases(*db_dirs):
     '''Verifies SNAP databases.
 
     If databases are malformed, print which are broken and exit with code 65.
@@ -264,18 +275,49 @@ def verify_databases(*db_dirs):
 
         print('The following databases are malformed:', file=sys.stderr)
 
-        for mal in malfored:
+        for mal in malformed:
             print(mal, file=sys.stderr)
 
         sys.exit(65)
 
     else:
-        print('Databases are good.', file=sys.stderr)
+        print('SNAP Databases are OK.', file=sys.stderr)
+
+def verify_rapsearch_databases(viral, nr):
+    '''Verifies RAPSearch databases.
+
+    If databases are malformed, print which are broken at exit with code 65.
+    '''
+
+    def verify_rapsearch_database(db):
+        return os.access(db, os.F_OK) and os.access(db + '.info', os.F_OK)
+
+    malformed = [db for db in (viral, nr) if not verify_rapsearch_database(db)]
+
+    if malformed:
+        print('The following databases are malfored:', file=sys.stderr)
+
+        for mal in malformed:
+            print(mal, file=sys.stderr)
+
+        sys.exit(65)
+
+    else:
+        print('RAPSearch databases are OK.', file=sys.stderr)
+
+def validate_fastqs(mode):
+
+    # TODO
+    if mode is 1:
+        pass
 
 def main():
 
     args = arguments()
+    # TODO add taxonomy DB verification
+    # TODO handle slave instances (line 633-637, 687-703 in original)
 
-    print(program_versions())
+
+
 if __name__ == '__main__':
     main()
