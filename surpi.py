@@ -170,6 +170,10 @@ def arguments():
 
     return parser.parse_args()
 
+def user_msg(*msg):
+
+    print(*msg, file=sys.stderr)
+
 def ensure_fastq(inputfile, mode):
     '''If mode is "fasta", convert inputfile to fastq.
 
@@ -218,15 +222,15 @@ def get_memory_limit():
 
     return memory_limit
 
+def run_shell(cmd):
+    out = subprocess.check_output(cmd, shell=True, universal_newlines=True)
+    return out.strip()
+
 def check_program_versions():
     '''Return the versions of each external dependency as a dict
 
     {program: version}
     '''
-
-    def run_shell(cmd):
-        out = subprocess.check_output(cmd, shell=True, universal_newlines=True)
-        return out.strip()
 
     version_cmds = {
         'gt':        "gt -version | head -1 | awk '{print $3}'",
@@ -305,18 +309,57 @@ def verify_rapsearch_databases(viral, nr):
     else:
         print('RAPSearch databases are OK.', file=sys.stderr)
 
-def validate_fastqs(mode):
+def validate_fastqs(fastq_file, logfile, mode):
+
+    assert mode in range(4), 'Invalid fastq validation mode'
+    modes = (
+        '',
+        'fastQValidator --file {} --printBaseComp \
+                --avgQual --disableSeqIDCheck > {}',
+        'fastQValidator --file {} --printBaseComp --avgQual > {}',
+        'fastQValidator --file {} --printBaseComp --avgQual > {}'
+        )
 
     # TODO
-    if mode is 1:
-        pass
+    if mode:
+
+        try:
+            result = run_shell(modes[mode].format(fastq_file, logfile))
+
+        except CalledProcessError:
+            msg = '{} appears to be invalid. Check {} for details'.format(fastq_file, logfile)
+            print(msg, file=sys.stderr)
+
+            if mode == 3:
+
+                print('Continuing anyway...', file=sys.stderr)
+
+            else:
+                sys.exit(65)
+
+def preprocess(name, quality, length_cutoff, cores, adapter_set, start,
+               crop_length, temp_dir):
+    # TODO user messages
+
+    cmd = 'preprocess_ncores.sh {name}.fastq {qual} N {len_cut} {cores} Y N \
+            {adapters} {start} {crop_len} {temp_dir} >& {name}.preprocess.log'
+
+    run_shell(cmd.format(name=name, qual=quality, len_cut=length_cutoff,
+                         cores=cores, adapters=adapter_set, start=start,
+                         crop_len=crop_length, temp_dir=temp_dir))
+    try:
+        os.path.getsize(name + 'preprocess.log')
+        os.path.getsize(name + '.cutadapt.fastq')
+    except OSError:
+        user_msg('Preproessing {} appears to have failed'.format(name))
+        sys.exit(65)
 
 def main():
 
     args = arguments()
     # TODO add taxonomy DB verification
     # TODO handle slave instances (line 633-637, 687-703 in original)
-
+    # TODO verification mode
 
 
 if __name__ == '__main__':
