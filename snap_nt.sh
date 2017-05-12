@@ -62,11 +62,11 @@ for snap_index in $SNAP_NT_index_directory/* ; do
 	if [[ $counter -eq 0 ]]
 	then
 		#running first SNAP chunk
-		/usr/bin/time -o $basef.snap.log $snap single $snap_index $basef.fastq -o $basef.tmp.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.time.log
+		/usr/bin/time -o $basef.snap.log snap-dev single $snap_index $basef.fastq -o $basef.tmp.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.time.log
 # 		cp $basef.tmp.sam temp.sam
 	else
 		#running 2nd SNAP chunk through last SNAP chunk
-		/usr/bin/time -o $basef.snap.log $snap single $snap_index $basef.tmp.fastq -o $basef.tmp.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.time.log
+		/usr/bin/time -o $basef.snap.log snap-dev single $snap_index $basef.tmp.fastq -o $basef.tmp.sam -t $cores -x -f -h 250 -d $SNAP_d_cutoff -n 25 > $basef.time.log
 	fi
 
 	cat $basef.snap.log >> $basef.snapNT.log
