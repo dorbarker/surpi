@@ -6,6 +6,7 @@ import argparse
 import subprocess
 from multiprocessing import cpu_count
 import sys
+from pathlib import Path
 
 def arguments():
 
@@ -199,6 +200,13 @@ def ensure_fastq(inputfile, mode):
 
         os.symlink(inputfile, fq_name)
 
+def free_memory(cache_reset):
+
+    freemem = float(run_shell("free -g | awk 'NR==2{print $4}'"))
+
+    if freemem < cache_reset:
+        run_shell('dropcache')
+
 def get_memory_limit():
     '''Return a usable memory limit in GB based on system RAM'''
 
@@ -222,8 +230,8 @@ def get_memory_limit():
 
     return memory_limit
 
-def run_shell(cmd):
-    out = subprocess.check_output(cmd, shell=True, universal_newlines=True)
+def run_shell(cmd, **kwargs):
+    out = subprocess.check_output(cmd, shell=True, universal_newlines=True, **kwargs)
     return out.strip()
 
 def check_program_versions():
@@ -353,6 +361,105 @@ def preprocess(name, quality, length_cutoff, cores, adapter_set, start,
     except OSError:
         user_msg('Preproessing {} appears to have failed'.format(name))
         sys.exit(65)
+
+# TODO may need extensive modification to generalize from human to other hosts
+def human_mapping(fastq, d_human, snap_subtraction_dir, cores):
+
+    human_basefile = Path(fastq).with_suffix('.preprocessed.s20.h250n25d{}xfu'.format(d_human))
+
+    to_subtract = Path(fastq).with_suffix('.preprocessed.fastq')
+
+    subtracted_output = Path(fastq).with_suffix('human.snap.unmatched.sam')
+
+    subtraction_counter = 0
+
+    vmtouch= "vmtouch -m500G -f {} | grep 'Resident Pages' | awk '{print $5}'"
+
+    snapdev = 'snap-dev single {sub_db} {to_sub} -o -sam {out} -t {cores} \
+              -x -f -h 250 -d {d_human} -n 25 -F u {snap_cache_opt}'
+
+    for subtract_db in Path(snap_subtraction_dir).glob('*'):
+
+        outname = str(subtracted_output) + '.' + subtraction_counter + '.sam'
+
+        subtraction_counter += 1
+
+        snap_db_cached = run_shell(vmtouch.format(db))
+
+        snap_cache_opt = ' -map ' if snap_db_cached == '100%' else ' -pre -map '
+
+        # wtf? fix later
+        snapdev_cmd = snapdev.format(sub_db=subtract_db, to_sub=to_subtract,
+                                     out=outname,
+                                     cores=cores, d_human=d_human, snap_cache_opt=snap_cache_opt)
+
+        to_subtract = outname
+
+    # dear god; must replace
+    write_unmatched = "grep -Ev \"^@\" {} | awk '{if($3 == \"*\") print \"@\"$1\"\n\"$10\"\n\"\"+\"$1\"\n\"$11}' > \
+            $echo {} | sed 's/\(.*\)\..*/\1/').fastq".format(str(human_basefile) + '.human.snap.unmatched.sam')
+    run_shell(write_unmatched)
+
+def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
+               snap_fast_db, cores):
+
+    # SNAP unmatched sequences to NT
+    if not Path(fastq).with_suffix('.NT.snap.sam').exists():
+
+        snap_nt = 'snap_nt.sh {host_unmatched} {snap_db} {cores} \
+                       {cache_reset} {snap_distance}'
+
+        if run_mode == 'comprehensive':
+
+
+            run_shell(snap_nt.format(host_unmatched=str(host_basefile) + '.human.snap.unmatched.fastq',
+                                     snap_db=snap_comp_db, cores=cores, cache_reset=cache_reset,
+                                     snap_distance = snap_edit_distance))
+
+        else:  # run_mode == 'fast'
+
+            run_shell(snap_nt.format(host_unmatched=str(host_basefile) + '.human.snap.unmatched.fastq',
+                                     snap_db=snap_fast_db, cores=cores, cache_reset=cache_reset,
+                                     snap_distance = snap_edit_distance))
+
+
+
+
+    matches = run_shell('grep -Ev "^@" {}'.format(Path(fastq).with_suffix('')))
+
+
+    matches_sam = Path(fastq).with_suffix('.NT.snap.matched.sam')
+    unmatches_sam = Path(fastq).with_suffix('.NT.snap.unmatched.sam')
+
+    with open(matches_sam, 'w') as m:
+
+        matched = run_shell("awk '{if($3 != \"*\") print }'", input=matches)
+        m.write(matched)
+
+    with open(unmatches_sam, 'w') as u:
+
+        unmatched = run_shell("awk '{if($3 == \"*\") print }'", input=matches)
+        u.write(unmatched)
+
+    if Path(fastq).with_suffix('.NT.snap.matched.all.annotated'):
+
+        # convert to FASTQ and retrieve full-length sequences
+
+        extract_fq_header = 'extractHeaderFromFastq_ncores.sh \
+                {cores} {cutadapt_fastq} {nt_snap_match} \
+                {nt_snap_match_fulllen} {nt_snap_unmatch} \
+                {nt_snap_unmatch_fulllen}'.format(
+                        cores=cores,
+                        cutadapt_fastq=Path(fastq).with_suffix('.cutadapt.fastq'),
+                        nt_snap_match=matches_sam,
+                        nt_snap_match_fulllen=matches_sam.with_suffix('.fulllength.fastq'),
+                        nt_snap_unmatch=unmatches_sam,
+                        nt_snap_unmatch_fulllen=unmatches_sam.with_suffix('.fulllength.fastq')
+                        )
+
+        run_shell(extract_fq_header)
+
+        # line 900 in original
 
 def main():
 

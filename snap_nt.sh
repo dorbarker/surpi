@@ -11,12 +11,12 @@
 # SURPI has been released under a modified BSD license.
 # Please see license file for details.
                  
-expected_args=6
+expected_args=5
 scriptname=${0##*/}
 
 if [ $# -lt $expected_args ]
 then
-	echo "Usage: $scriptname <FASTQ input file> <directory containing SNAP NT indexes> <number of cores> <free cache memory cutoff in GB> <SNAP d-value cutoff> <SNAP binary>"
+	echo "Usage: $scriptname <FASTQ input file> <directory containing SNAP NT indexes> <number of cores> <free cache memory cutoff in GB> <SNAP d-value cutoff>"
 	exit 65
 fi
 
@@ -26,7 +26,6 @@ SNAP_NT_index_directory=$2
 cores=$3
 free_cache_cutoff=$4
 SNAP_d_cutoff=$5
-snap=$6
 ###
 
 echo -e "$(date)\t$scriptname\tStarting SNAP to NT"
