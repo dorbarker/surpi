@@ -403,6 +403,9 @@ def human_mapping(fastq, d_human, snap_subtraction_dir, cores):
 def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
                snap_fast_db, cores):
 
+    # TODO refactor once written
+    basef = Path(fastq).name
+
     # SNAP unmatched sequences to NT
     if not Path(fastq).with_suffix('.NT.snap.sam').exists():
 
@@ -441,7 +444,7 @@ def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
         unmatched = run_shell("awk '{if($3 == \"*\") print }'", input=matches)
         u.write(unmatched)
 
-    if Path(fastq).with_suffix('.NT.snap.matched.all.annotated'):
+    if not Path(fastq).with_suffix('.NT.snap.matched.all.annotated').exists():
 
         # convert to FASTQ and retrieve full-length sequences
 
@@ -459,8 +462,37 @@ def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
 
         run_shell(extract_fq_header)
 
-        # line 900 in original
+        snap_matched = '{}.NT.snap.matched'.format(basef)
 
+        # line 900 in original
+        run_shell('sort -k1,1 {0}.sam > {0}.sorted.sam'.format(snap_matched))
+        run_shell('cut -f 1-9 {0}.sorted.sam > {0}.sorted.sam.tmp1'.format(snap_matched))
+        run_shell('cut -f 12- {0}.sorted.sam > {0}.sorted.sam.tmp2'.format(snap_matched))
+
+        cmd1 = "awk '(NR%4==1) {printf(i\"%s\t\",$0)} (NR%4==2) {printf(\"%s\t\", $0)} (NR%4==0) {printf(\"%s\n\",$0)}' \
+                ${}.fulllength.fastq".format(snap_matched)
+
+        cmd2 = "sort -k1,1 | awk '{print $2 \"\t\" $3}' > {}.fulllength.sequence.txt".format(snap_matched)
+
+        res1 = run_shell(cmd1)
+        run_shell(cmd2, input=cmd1)
+
+        run_shell('paste {0}.sorted.sam.tmp1 \
+                   {0}.fulllength.sequence.txt \
+                   {0}.sorted.sam.tmp2 > \
+                   {0}.fulllength.sam'.format(snap_matched))
+
+        tax_lookup = 'taxonomy_lookup.pl {}.fulllength.sam sam nucl {} {}'.format(snap_matched, cores, taxonomy_db_dir)
+
+        run_shell(tax_lookup)
+
+        run_shell('sort -k 13.7n {0}.fulllength.all.annotated > \
+                   {0}.fulllength.all.annotated.sorted'.format(snap_matched))
+
+        os.remove('{}.fulllength.gi'.format(snap_matched))
+        os.remove('{}.fulllength.gi.taxonomy'.format(snap_matched))
+
+        # line 913
 def main():
 
     args = arguments()
