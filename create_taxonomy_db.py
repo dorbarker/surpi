@@ -69,8 +69,8 @@ def trim_names(db_dir):
 
 def tidy(db_dir):
 
-    for i in Path(db_dir).glob('*.dmp'):
-        os.remove(i)
+    for i in db_dir.glob('*.dmp'):
+        os.remove(str(i))
 
     os.remove('gc.prt')
     os.remove('readme.txt')
@@ -159,7 +159,7 @@ def main():
 
     verify_files(args.db_directory)
 
-    #unzip_downloads(args.db_directory)
+    unzip_downloads(args.db_directory)
 
     trim_names(args.db_directory)
 
