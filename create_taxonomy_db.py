@@ -37,46 +37,71 @@ def user_msg(*args):
 
 def unzip_downloads(db_dir):
 
-    tar = ('tar', 'xzf', str(db_dir / 'taxdump.tar.gz'))
+    tar = ('tar', 'xzf', str(db_dir / 'taxdump.tar.gz'), '-C', str(db_dir))
     subprocess.call(tar)
 
     for gz in db_dir.glob('*.gz'):
-        cmd = ('pigz -dck {} > {}'.format(gz, gz.with_suffix('').name))
+        cmd = ('pigz -dck {} > {}'.format(gz, db_dir / gz.with_suffix('').name))
         subprocess.call(cmd, shell=True)
 
 def verify_files(db_dir):
 
-    # TODO add file names
-    files = ()
+    files = ('nucl_est.accession2taxid.gz', 'nucl_wgs.accession2taxid.gz',
+             'nucl_gb.accession2taxid.gz', 'nucl_gss.accession2taxid.gz',
+             'prot.accession2taxid', 'nt.gz', 'nr.gz', 'taxdump.tar.gz')
 
     if not all((db_dir / f).exists() for f in files):
         user_msg('Did not find all files. Quitting...', file=sys.stderr)
         sys.exit(1)
 
-def trim_names():
+def trim_names(db_dir):
 
-    subprocess.call('grep "scientific name" names.dmp > names_scientificname.dmp',
-                    shell=True)
+    names = db_dir / 'names.dmp'
+    scinames = db_dir / 'names_scientificname.dmp'
 
-def tidy():
+    grep_scinames = ('grep', 'scientific name', str(names))
 
-    for i in Path('.').glob('*.dmp'):
+    scinames_lines = subprocess.check_output(grep_scinames,
+                                             universal_newlines=True)
+
+    with open(str(scinames), 'w') as f:
+        f.write(scinames_lines)
+
+def tidy(db_dir):
+
+    for i in Path(db_dir).glob('*.dmp'):
         os.remove(i)
 
     os.remove('gc.prt')
     os.remove('readme.txt')
 
-def create_dbs():
+def create_dbs(db_dir):
+
+    def acc_taxid(path, db_path):
+
+        c = sqlite3.connect(str(db_path))
+
+        with open(str(path), 'r') as f:
+            for line in f:
+                if line.startswith('accession'):
+                    continue
+
+                acc, acc_ver, taxid, gi = line.strip().split()
+
+                cmd = 'INSERT INTO acc_taxid VALUES (?,?)'
+                c.execute(cmd, (acc, taxid))
+        c.commit()
+        c.close()
 
     # Create names_nodes_scientific.db
     user_msg("Creating names_nodes_scientific.db...")
-    conn = sqlite3.connect('names_nodes_scientific.db')
+    conn = sqlite3.connect(str(db_dir / 'names_nodes_scientific.db'))
     c = conn.cursor()
     c.execute('''CREATE TABLE names (
                 taxid INTEGER PRIMARY KEY,
                 name TEXT)''')
 
-    with open('names_scientificname.dmp', 'r') as map_file:
+    with open(str(db_dir / 'names_scientificname.dmp'), 'r') as map_file:
         for line in map_file:
             line = line.split("|")
             taxid = line[0].strip()
@@ -90,7 +115,7 @@ def create_dbs():
                 parent_taxid INTEGER,
                 rank TEXT)''')
 
-    with open('nodes.dmp', 'r') as map_file:
+    with open(str(db_dir / 'nodes.dmp'), 'r') as map_file:
         for line in map_file:
             line = line.split("|")
             taxid = line[0].strip()
@@ -101,36 +126,32 @@ def create_dbs():
     conn.commit()
     conn.close()
 
-    # Create gi_taxid_nucl.db
-    user_msg("Creating gi_taxid_nucl.db...")
-    conn = sqlite3.connect('gi_taxid_nucl.db')
+    # Create acc_taxid_nucl.db
+    user_msg('Creating acc_taxid_nucl.db...')
+    conn = sqlite3.connect(str(db_dir / 'acc_taxid_nucl.db'))
     c = conn.cursor()
-    c.execute('''CREATE TABLE gi_taxid (
-                gi INTEGER PRIMARY KEY,
-                taxid INTEGER)''')
+    c.execute('''CREATE TABLE acc_taxid (
+                 acc TEXT PRIMARY KEY,
+                 taxid integer)''')
 
-    with open('gi_taxid_nucl.dmp', 'r') as map_file:
-        for line in map_file:
-            fst, snd, *rest = line.split()
-            c.execute('INSERT INTO gi_taxid VALUES ({},{})'.format(fst, snd))
-    conn.commit()
-    conn.close()
+    # insert values to acc_taxid_nucl.db
+    for i in ('est', 'wgs', 'gb', 'gss'):
+
+        user_msg('Adding {} to acc_taxid_nucl.db'.format(i))
+
+        path = db_dir / 'nucl_{}.accession2taxid'.format(i)
+
+        acc_taxid(path, db_dir / 'acc_taxid_nucl.db')
 
     # Create gi_taxid_prot.db
-    user_msg("Creating gi_taxid_prot.db...")
-    conn = sqlite3.connect('gi_taxid_prot.db')
+    user_msg("Creating acc_taxid_prot.db...")
+    conn = sqlite3.connect(str(db_dir / 'acc_taxid_prot.db'))
     c = conn.cursor()
-    c.execute('''CREATE TABLE gi_taxid (
-                gi INTEGER PRIMARY KEY,
+    c.execute('''CREATE TABLE acc_taxid (
+                acc TEXT PRIMARY KEY,
                 taxid INTEGER)''')
 
-    with open('gi_taxid_prot.dmp', 'r') as map_file:
-        for line in map_file:
-            fst, snd, *rest  = line.split()
-            c.execute('INSERT INTO gi_taxid VALUES ({},{})'.format(fst, snd))
-
-    conn.commit()
-    conn.close()
+    acc_taxid(db_dir / 'prot.accession2taxid', db_dir / 'acc_taxid_prot.db')
 
 def main():
 
@@ -138,13 +159,13 @@ def main():
 
     verify_files(args.db_directory)
 
-    unzip_downloads(args.db_directory)
+    #unzip_downloads(args.db_directory)
 
-    trim_names()
+    trim_names(args.db_directory)
 
-    create_dbs()
+    create_dbs(args.db_directory)
 
-    tidy()
+    tidy(args.db_directory)
 
 if __name__ == '__main__':
     main()
