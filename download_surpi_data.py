@@ -38,9 +38,11 @@ def download_file(src, dest, overwrite=False):
 
     if overwrite or not dest.exists():
 
-        cmd = ('curl', '-o', str(dest), str(src))
+        db = ('curl', '-o', str(dest), str(src))
+        md5 = ('curl', '-o', str(dest) + '.md5', str(src) + '.md5')
 
-        subprocess.call(cmd)
+        subprocess.call(md5)
+        subprocess.call(db)
 
 def download_ncbi(dest, overwrite):
 
@@ -51,34 +53,34 @@ def download_ncbi(dest, overwrite):
     taxny = ncbi / 'pub/taxonomy'
 
     download_file(fasta / 'nt.gz', dest / 'nt.gz', overwrite)
-    download_file(fasta / 'nt.gz.md5', dest / 'nt.gz.md5', overwrite)
+    #download_file(fasta / 'nt.gz.md5', dest / 'nt.gz.md5', overwrite)
 
     download_file(fasta / 'nr.gz', dest / 'nr.gz', overwrite)
-    download_file(fasta / 'nr.gz.md5', dest / 'nr.gz.md5', overwrite)
+    #download_file(fasta / 'nr.gz.md5', dest / 'nr.gz.md5', overwrite)
 
     download_file(taxny / 'taxdump.tar.gz', dest / 'taxdump.tar.gz', overwrite)
-    download_file(taxny / 'taxdump.tar.gz.md5', dest / 'taxdump.tar.gz.md5', overwrite)
+    #download_file(taxny / 'taxdump.tar.gz.md5', dest / 'taxdump.tar.gz.md5', overwrite)
 
     for db in ('est', 'gb', 'gss', 'wgs'):
 
         nucl = 'nucl_{}.accession2taxid.gz'.format(db)
-        nuclmd5 = str(nucl) + '.md5'
+        #nuclmd5 = str(nucl) + '.md5'
         url  = taxny / 'accession2taxid' / nucl
-        urlmd5 = str(url) + '.md5'
+        #urlmd5 = str(url) + '.md5'
 
         download_file(url, dest / nucl, overwrite)
-        download_file(urlmd5, dest / nuclmd5, overwrite)
+        #download_file(urlmd5, dest / nuclmd5, overwrite)
 
     prot = 'prot.accession2taxid.gz'
 
     download_file(taxny / 'accession2taxid' / prot , dest / prot, overwrite)
-    download_file(taxny / 'accession2taxid' / prot + '.md5', dest / prot + '.md5', overwrite)
+    #download_file(taxny / 'accession2taxid' / prot + '.md5', dest / prot + '.md5', overwrite)
 
 def download_curated(dest):
 
     ensure_dir(dest)
 
-    chiu = Path('http://chiulab.ucsf.edu/SURPI/databases')
+    chiu = Path('chiulab.ucsf.edu/SURPI/databases')
 
     download_list=('Bacterial_Refseq_05172012.CLEAN.LenFiltered.uniq.fa.gz',
                    'hg19_rRNA_mito_Hsapiens_rna.fa.gz',
@@ -90,14 +92,14 @@ def download_curated(dest):
 
     for dl in download_list:
         download_file(chiu / dl, dest / dl, overwrite=False)
-        download_file(chiu / dl + '.md5', dest / dl + '.md5', overwrite=False)
+        #download_file(chiu / dl + '.md5', dest / dl + '.md5', overwrite=False)
 
 def md5check(directory):
 
     md5s = Path(directory).glob('*.md5')
 
     for md5 in md5s:
-        cmd = ('md5sum', '-c', '--status', md5)
+        cmd = ('md5sum', '-c', '--status', str(md5))
 
         # if hashes don't match
         if subprocess.call(cmd):
@@ -107,10 +109,8 @@ def main():
 
     args = arguments()
 
-    download_test(Path('/home/dbarker/Desktop/test'), True)
     # NCBI data
     download_ncbi(args.destination, args.overwrite)
-
     md5check(args.destination)
 
     # Chiu lab data
