@@ -395,10 +395,23 @@ def human_mapping(fastq, d_human, snap_subtraction_dir, cores):
 
         to_subtract = outname
 
-    # dear god; must replace
-    write_unmatched = "grep -Ev \"^@\" {} | awk '{if($3 == \"*\") print \"@\"$1\"\n\"$10\"\n\"\"+\"$1\"\n\"$11}' > \
-            $echo {} | sed 's/\(.*\)\..*/\1/').fastq".format(str(human_basefile) + '.human.snap.unmatched.sam')
-    run_shell(write_unmatched)
+    subtracted_out = '{}.{}.sam'.format(subtracted_output, subtraction_counter)
+
+    host_unmatched_fq = Path(human_basefile).with_suffix('.fastq')
+
+    # still bad, but better
+    with open(subtracted_out, 'r') as h, open(host_unmatched_fq, 'w') as fq:
+        for line in h:
+
+            if not line.startswith('@'):
+                l = line.split()
+
+                if line[3] == '*':
+
+                    o = '@{fst}\n{tenth}\n+{fst}\n{eleventh}'.format(fst=line[0],
+                                                                     tenth=line[9],
+                                                                     eleventh=line[10])
+                    fq.write(o)
 
 def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
                snap_fast_db, cores):
@@ -429,7 +442,6 @@ def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
 
 
     matches = run_shell('grep -Ev "^@" {}'.format(Path(fastq).with_suffix('')))
-
 
     matches_sam = Path(fastq).with_suffix('.NT.snap.matched.sam')
     unmatches_sam = Path(fastq).with_suffix('.NT.snap.unmatched.sam')
