@@ -7,7 +7,7 @@ import subprocess
 from multiprocessing import cpu_count
 import sys
 from pathlib import Path
-
+from utilities import run_shell, user_msg
 def arguments():
 
     parser = argparse.ArgumentParser()
@@ -171,10 +171,6 @@ def arguments():
 
     return parser.parse_args()
 
-def user_msg(*msg):
-
-    print(*msg, file=sys.stderr)
-
 def ensure_fastq(inputfile, mode):
     '''If mode is "fasta", convert inputfile to fastq.
 
@@ -229,10 +225,6 @@ def get_memory_limit():
         memory_limit = 50
 
     return memory_limit
-
-def run_shell(cmd, **kwargs):
-    out = subprocess.check_output(cmd, shell=True, universal_newlines=True, **kwargs)
-    return out.strip()
 
 def check_program_versions():
     '''Return the versions of each external dependency as a dict
@@ -373,7 +365,7 @@ def human_mapping(fastq, d_human, snap_subtraction_dir, cores):
 
     subtraction_counter = 0
 
-    vmtouch= "vmtouch -m500G -f {} | grep 'Resident Pages' | awk '{print $5}'"
+    vmtouch = "vmtouch -m500G -f {} | grep 'Resident Pages' | awk '{print $5}'"
 
     snapdev = 'snap-dev single {sub_db} {to_sub} -o -sam {out} -t {cores} \
               -x -f -h 250 -d {d_human} -n 25 -F u {snap_cache_opt}'
@@ -430,7 +422,7 @@ def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
 
             run_shell(snap_nt.format(host_unmatched=str(host_basefile) + '.human.snap.unmatched.fastq',
                                      snap_db=snap_comp_db, cores=cores, cache_reset=cache_reset,
-                                     snap_distance = snap_edit_distance))
+                                     snap_distance=snap_edit_distance))
 
         else:  # run_mode == 'fast'
 
@@ -464,13 +456,13 @@ def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
                 {cores} {cutadapt_fastq} {nt_snap_match} \
                 {nt_snap_match_fulllen} {nt_snap_unmatch} \
                 {nt_snap_unmatch_fulllen}'.format(
-                        cores=cores,
-                        cutadapt_fastq=Path(fastq).with_suffix('.cutadapt.fastq'),
-                        nt_snap_match=matches_sam,
-                        nt_snap_match_fulllen=matches_sam.with_suffix('.fulllength.fastq'),
-                        nt_snap_unmatch=unmatches_sam,
-                        nt_snap_unmatch_fulllen=unmatches_sam.with_suffix('.fulllength.fastq')
-                        )
+                    cores=cores,
+                    cutadapt_fastq=Path(fastq).with_suffix('.cutadapt.fastq'),
+                    nt_snap_match=matches_sam,
+                    nt_snap_match_fulllen=matches_sam.with_suffix('.fulllength.fastq'),
+                    nt_snap_unmatch=unmatches_sam,
+                    nt_snap_unmatch_fulllen=unmatches_sam.with_suffix('.fulllength.fastq')
+                    )
 
         run_shell(extract_fq_header)
 

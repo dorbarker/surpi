@@ -3,9 +3,15 @@ import sys
 import functools
 
 def user_msg(*args):
+    '''Wrapper for print() that prints to stderr'''
+
     print(*args, file=sys.stderr)
 
 def logtime(name):
+    '''Function decorator that print to stderr the runtime of the
+    decorated function.
+    '''
+
     def decorator(func):
 
         @functools.wraps(func)
@@ -23,3 +29,12 @@ def logtime(name):
 
         return wrapper
     return decorator
+
+def run_shell(cmd, **kwargs):
+    '''Runs a shell command using the subprocess module and returns the
+    command's stdout.'''
+
+    out = subprocess.check_output(cmd, shell=True,
+                                  universal_newlines=True, **kwargs)
+    return out.strip()
+
