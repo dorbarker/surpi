@@ -1,6 +1,7 @@
 from datetime import datetime
 import sys
 import functools
+import fileinput
 
 def user_msg(*args):
     '''Wrapper for print() that prints to stderr'''
@@ -38,3 +39,9 @@ def run_shell(cmd, **kwargs):
                                   universal_newlines=True, **kwargs)
     return out.strip()
 
+def concatenate(*files, output):
+    '''Concatenate files together and write them to output'''
+
+    with open(output, 'w') as o, fileinput.input(files)  as i:
+        for line in i:
+            o.write(line)
