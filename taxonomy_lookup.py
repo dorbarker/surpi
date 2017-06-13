@@ -84,39 +84,38 @@ def query_dbs(db_dir, seq_type, accs):
 
     return taxonomy
 
-def sam_append(in_sam_path, out_sam_path, taxonomy):
+def result_append(in_path, out_path, taxonomy, file_type):
     '''Appends taxonomy info line-by-line to the SAM file and writes the
     result to `out_sam_path`.
     '''
 
+    acc_column = 2 if file_type == 'sam' else 1
     ranks = ('family', 'genus', 'species', 'lineage')
 
-    with open(in_sam_path, 'r') as in_sam, open(out_sam_path, 'w') as out_sam:
+    with open(in_path, 'r') as infile, open(out_path, 'w') as outfile:
 
-        out = csv.writer(out_sam, delimiter='\t', quoting=csv.QUOTE_NONE)
+        out = csv.writer(outfile, delimiter='\t', quoting=csv.QUOTE_NONE)
 
-        for line in in_sam:
+        for line in infile:
 
             sam_line = line.strip().split()
-            acc = line[2]
+            acc = line[acc_column]
 
             ranks = ('{}--{}'.format(rnk, taxonomy[acc][rnk]) for rnk in ranks)
 
             out.writerow(sam_line.extend(ranks))
 
-
-def taxonomy_lookup(in_sam, out_sam, db_dir, seq_type):
+def taxonomy_lookup(infile, outfile, db_dir, seq_type, file_type):
     '''Given a SAM file, look up taxonomy information for each sequence,
     append the taxonomy information to the end of each SAM line, and write this
     to a new file.
     '''
 
-    # TODO: add support for BLAST files
-    accs = get_accession_numbers(in_sam, 'sam')
+    accs = get_accession_numbers(infile, file_type)
 
     taxonomy = query_dbs(db_dir, seq_type, accs)
 
-    sam_append(in_sam, out_sam, taxonomy)
+    result_append(infile, outfile, taxonomy, file_type)
 
 def main():
     '''Main function for calling taxonomy_lookup() directly from the command
@@ -128,7 +127,7 @@ def main():
     args = arguments()
 
     taxonomy_lookup(args.input_file, args.output_file,
-                    args.tax_dir, args.seq_type)
+                    args.tax_dir, args.seq_type, args.file_type)
 
 
 if __name__ == '__main__':
