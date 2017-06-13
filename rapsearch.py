@@ -200,3 +200,28 @@ def rapsearch_viral(query, vir_output, nr_output, vir_database, nr_database,
     # TODO: Get viral geaders no longer found in NR rapsearch
 
     # TODO: table_generator goes here
+
+def rapsearch_nr(snap_unmatched, abyss_output, output, rap_database,
+                 tax_db_dir, cores, cutoff, fast, log):
+
+    contigs_nt = abyss_output.parent / 'contigs_nt_snap_unmatched.fasta'
+    concatenate(snap_unmatched, abyss_output, output=contigs_nt)
+    log = output.with_suffix('.log')
+    virus_tax = output.with_suffix('.viruses.annotated')
+    novir_tax = output.with_suffix('.novir.annotated')
+
+    rapsearch_shared(contigs_nt, output, rap_database, tax_db_dir, cores,
+                     cutoff, fast, log)
+
+    virus = filter_taxonomy('Viruses', output)
+    novir = [tax for tax in filter_taxonomy('^contig', output)
+               if 'Viruses' not in tax]
+
+    virus_tax.write_text('\n'.join(virus))
+    novir_tax.write_text('\n'.join(novir))
+
+    table_generator(virus_tax, 'RAP', 'Y', 'Y', 'Y', 'Y')
+    table_generator(novir_tax, 'RAP', 'N', 'Y', 'N', 'N')
+
+    # TODO: coverage map
+
