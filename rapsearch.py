@@ -2,9 +2,11 @@
 
 import subprocess
 import re
+import tempfile
 from Bio import SeqIO
 from utilities import concatenate
 from taxonomy_lookup import taxonomy_lookup
+from pathlib import Path
 
 def run_rapsearch(query, output, database, cores, cutoff, fast, log):
     '''Runs RAPSearch with some default arguments overriden.'''
@@ -67,6 +69,8 @@ def paste(a_list, b_list):
     '''
 
     def merge(a_elem, b_elem):
+        '''Merges paired line elements'''
+
         return '{}\t{}\n'.format(a_elem.strip(), b_elem.strip())
 
     return [merge(a_elem, b_elem) for a_elem, b_elem in zip(a_list, b_list)]
@@ -96,6 +100,27 @@ def table_generator(annotated, snap_rap, acc, species, genus, family):
 
     subprocess.check_call(cmd)
 
+def coverage_map(snap_matched, annotated, evalue, cores):
+    '''Removes "@" from taxonomy annotation
+    and runs coverage_generator_bp.sh
+    '''
+
+    name = annotated.stem.split('.')[0]
+
+    annot = annotated.read_text().replace('@', '')
+
+    with tempfile.NamedTemporaryFile() as inc_bar:
+        inc_bar.write(annot)
+        inc_bar.seek(0)
+        inc_bar_name = Path(inc_bar.name)
+
+        cov_gen = ('coverage_generator_bp.sh', snap_matched, inc_bar_name,
+                   evalue, cores, 10, 1, name)
+
+        subprocess.check_call(map(str, cov_gen))
+
+    inc_bar_name.unlink()
+
 def rapsearch_shared(rapsearch_query, rapsearch_output, rap_database,
                      tax_db_dir, cores, cutoff, fast, log):
     '''Functions shared by all RAPSearch strategies.'''
@@ -108,6 +133,7 @@ def rapsearch_shared(rapsearch_query, rapsearch_output, rap_database,
                     seq_type='nucl', file_type='blast')
 
 def rapsearch(query, output, database, cores, cutoff, fast, log):
+    '''Run RAPSearch and handle immediate processing of its output'''
 
     m8 = output.with_suffix(output.suffix + '.m8')
     m8fasta = m8.with_suffix(m8.suffix + '.fasta')
@@ -132,7 +158,8 @@ def rapsearch(query, output, database, cores, cutoff, fast, log):
 
 def rapsearch_viral(query, vir_output, nr_output, vir_database, nr_database,
                     cores, vir_cutoff, nr_cutoff, fast, abyss_output,
-                    contigs_nt_unmatched_fasta, tax_db_dir):
+                    contigs_nt_unmatched_fasta, tax_db_dir, snap_match_annot,
+                    evalue):
 
     # TODO: make contigs_nt_unmatched generated internally rather than
     # passing in by parameter
@@ -168,7 +195,7 @@ def rapsearch_viral(query, vir_output, nr_output, vir_database, nr_database,
     table_generator(contig_tax, 'RAP', 'Y', 'Y', 'Y', 'Y')
 
 
-    # TODO: coverage mapping
+    coverage_map(snap_match_annot, virus_tax, evalue, cores)
 
     # TODO: Get viral geaders no longer found in NR rapsearch
 
