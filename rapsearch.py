@@ -3,10 +3,11 @@
 import subprocess
 import re
 import tempfile
+from pathlib import Path
+
 from Bio import SeqIO
 from utilities import concatenate
 from taxonomy_lookup import taxonomy_lookup
-from pathlib import Path
 
 def run_rapsearch(query, output, database, cores, cutoff, fast, log):
     '''Runs RAPSearch with some default arguments overriden.'''
@@ -156,18 +157,36 @@ def rapsearch(query, output, database, cores, cutoff, fast, log):
 
     return addseq
 
+def vir_nr_difference(vir_annotated, nr_annotated):
+    '''Returns the viral annotations not found in NR'''
+
+    def get_headers(annot):
+        '''Extracts the headers from a taxomomy annotation'''
+        return [line.split('\t')[0] for line in annot]
+
+    vir_headers = get_headers(vir_annotated)
+    nr_headers = get_headers(nr_annotated)
+
+    headers_not_in_nr = set(vir_headers) - set(nr_headers)
+
+    not_in_nr = [annot for header, annot in zip(vir_headers, vir_annotated)
+                 if header in headers_not_in_nr]
+
+    return not_in_nr
+
 def rapsearch_viral(query, vir_output, nr_output, vir_database, nr_database,
                     cores, vir_cutoff, nr_cutoff, fast, abyss_output,
-                    contigs_nt_unmatched_fasta, tax_db_dir, snap_match_annot,
-                    evalue):
-
-    # TODO: make contigs_nt_unmatched generated internally rather than
-    # passing in by parameter
+                    tax_db_dir, snap_match_annot, evalue):
+    '''Performs a RAPSearch first against a specialized viral database,
+    and then against the NCBI NR database.
+    '''
 
     m8 = vir_output.with_suffix(vir_output.suffix  + '.m8')
     log = vir_output.with_suffix('.virlog')
     virus_tax = nr_output.with_suffix('.viruses.annotated')
     contig_tax = nr_output.with_suffix('.NRcontigs.annotated')
+    contigs_nt_unmatched_fasta = m8.with_suffix('Contigs.NTunmatched.fasta')
+    not_in_nr_annot = m8.with_suffix('.notNR.annotated')
 
     rapsearch_shared(query, vir_output, vir_database, tax_db_dir,
                      cores, vir_cutoff, fast, log)
@@ -197,12 +216,14 @@ def rapsearch_viral(query, vir_output, nr_output, vir_database, nr_database,
 
     coverage_map(snap_match_annot, virus_tax, evalue, cores)
 
-    # TODO: Get viral geaders no longer found in NR rapsearch
+    not_in_nr = vir_nr_difference(viruses, contigs)
+    not_in_nr_annot.write_text('\n'.join(not_in_nr))
 
-    # TODO: table_generator goes here
+    table_generator(not_in_nr_annot, 'RAP', 'N', 'Y', 'N', 'N')
 
 def rapsearch_nr(snap_unmatched, abyss_output, output, rap_database,
                  tax_db_dir, cores, cutoff, fast, log):
+    '''Performs a RAPSearch against the NCBI NR database'''
 
     contigs_nt = abyss_output.parent / 'contigs_nt_snap_unmatched.fasta'
     concatenate(snap_unmatched, abyss_output, output=contigs_nt)
@@ -215,13 +236,10 @@ def rapsearch_nr(snap_unmatched, abyss_output, output, rap_database,
 
     virus = filter_taxonomy('Viruses', output)
     novir = [tax for tax in filter_taxonomy('^contig', output)
-               if 'Viruses' not in tax]
+             if 'Viruses' not in tax]
 
     virus_tax.write_text('\n'.join(virus))
     novir_tax.write_text('\n'.join(novir))
 
     table_generator(virus_tax, 'RAP', 'Y', 'Y', 'Y', 'Y')
     table_generator(novir_tax, 'RAP', 'N', 'Y', 'N', 'N')
-
-    # TODO: coverage map
-
