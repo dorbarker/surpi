@@ -45,3 +45,22 @@ def concatenate(*files, output):
     with open(output, 'w') as o, fileinput.input(files)  as i:
         for line in i:
             o.write(line)
+
+def annotated_to_fastq(annotated):
+    '''Converts and annotation Path to FASTQ format as a str.'''
+
+    def fastq(line):
+
+        l = line.split()
+
+        if line[3] == '*':
+
+            rec = '@{fst}\n{tenth}\n+{fst}\n{eleventh}\n'
+
+            return rec.format(fst=l[0], tenth=l[9], eleventh=l[10])
+
+    lines = annotated.read_text().splitlines()
+
+    fastq_lines = (fastq(line) for line in lines if not line.startswith('@'))
+
+    return '\n'.join(fastq_lines)

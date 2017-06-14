@@ -50,18 +50,3 @@ def host_subtract(sample, output, snap_db_dir, cores, tempdir, edit_distance):
             subtract(snap_db, to_subtract, temp_output, snap_cache_option)
 
             to_subtract = temp_output
-
-        with open(to_subtract, 'r') as f, open(output, 'w') as o:
-
-            for line in f:
-
-                if not line.startswith('2'):
-                    l = line.split()
-
-                    if line[3] == '*':
-                        rec = '@{fst}\n{tenth}\n+{fst}\n{eleventh}\n'
-                        rec = rec.format(fst=line[0]
-                                         tenth=line[9],
-                                         eleventh=line[10])
-                        o.write(rec)
-
