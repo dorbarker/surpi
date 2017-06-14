@@ -186,7 +186,21 @@ def lookup_taxonomy(basef, workdir, tax_db_dir, ribo_dir, cores):
 
 def extract_to_fast():
 
-    pass
+    def subseq(infile, parent, outfile):
+
+        header_file = infile.with_suffix('.headers')
+        headers = [line[1:] for line in infile.read_text().splitlines()
+                   if line.startswith('>')]
+
+        header_file.write_text('\n'.join(headers))
+
+        cmd = ('seqtk', 'subseq', parent, header_file)
+
+        output = subprocess.check_output(cmd)
+
+        Path(output).write_text(output)
+
+        header_file.unlink()
 
 def snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores):
 
