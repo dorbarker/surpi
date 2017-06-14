@@ -7,7 +7,7 @@ from pathlib import Path
 
 from Bio import SeqIO
 from utilities import concatenate
-from taxonomy_lookup import taxonomy_lookup
+from taxonomy_lookup import taxonomy_lookup, table_generator
 
 def run_rapsearch(query, output, database, cores, cutoff, fast, log):
     '''Runs RAPSearch with some default arguments overriden.'''
@@ -86,20 +86,6 @@ def filter_taxonomy(pattern, annotated):
     with open(annotated, 'r') as annot:
 
         return [line for line in annot if re.search(comppat, line)]
-
-def table_generator(annotated, snap_rap, acc, species, genus, family):
-    '''Runs external script `table_generator.sh`'''
-
-    assert snap_rap in ('SNAP', 'RAP')
-    assert acc in ('Y', 'N')
-    assert species in ('Y', 'N')
-    assert genus in ('Y', 'N')
-    assert family in ('Y', 'N')
-
-    cmd = ('table_generator.sh', str(annotated),
-           snap_rap, acc, species, genus, family)
-
-    subprocess.check_call(cmd)
 
 def coverage_map(snap_matched, annotated, evalue, cores):
     '''Removes "@" from taxonomy annotation

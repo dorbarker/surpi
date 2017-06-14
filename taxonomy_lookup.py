@@ -105,6 +105,20 @@ def result_append(in_path, out_path, taxonomy, file_type):
 
             out.writerow(sam_line.extend(ranks))
 
+def table_generator(annotated, snap_rap, acc, species, genus, family):
+    '''Runs external script `table_generator.sh`'''
+
+    assert snap_rap in ('SNAP', 'RAP')
+    assert acc in ('Y', 'N')
+    assert species in ('Y', 'N')
+    assert genus in ('Y', 'N')
+    assert family in ('Y', 'N')
+
+    cmd = ('table_generator.sh', str(annotated),
+           snap_rap, acc, species, genus, family)
+
+    subprocess.check_call(cmd)
+
 def taxonomy_lookup(infile, outfile, db_dir, seq_type, file_type):
     '''Given a SAM file, look up taxonomy information for each sequence,
     append the taxonomy information to the end of each SAM line, and write this
