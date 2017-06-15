@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+# system imports
 import glob
 import os
 import argparse
@@ -7,7 +8,11 @@ import subprocess
 from multiprocessing import cpu_count
 import sys
 from pathlib import Path
+
+# surpi imports
 from utilities import run_shell, user_msg
+from snap_to_nt import snap
+
 def arguments():
 
     parser = argparse.ArgumentParser()
@@ -354,152 +359,14 @@ def preprocess(name, quality, length_cutoff, cores, adapter_set, start,
         user_msg('Preproessing {} appears to have failed'.format(name))
         sys.exit(65)
 
-# TODO may need extensive modification to generalize from human to other hosts
-def human_mapping(fastq, d_human, snap_subtraction_dir, cores):
+def surpi():
+    pass
 
-    human_basefile = Path(fastq).with_suffix('.preprocessed.s20.h250n25d{}xfu'.format(d_human))
-
-    to_subtract = Path(fastq).with_suffix('.preprocessed.fastq')
-
-    subtracted_output = Path(fastq).with_suffix('human.snap.unmatched.sam')
-
-    subtraction_counter = 0
-
-    vmtouch = "vmtouch -m500G -f {} | grep 'Resident Pages' | awk '{print $5}'"
-
-    snapdev = 'snap-dev single {sub_db} {to_sub} -o -sam {out} -t {cores} \
-              -x -f -h 250 -d {d_human} -n 25 -F u {snap_cache_opt}'
-
-    for subtract_db in Path(snap_subtraction_dir).glob('*'):
-
-        outname = str(subtracted_output) + '.' + subtraction_counter + '.sam'
-
-        subtraction_counter += 1
-
-        snap_db_cached = run_shell(vmtouch.format(db))
-
-        snap_cache_opt = ' -map ' if snap_db_cached == '100%' else ' -pre -map '
-
-        # wtf? fix later
-        snapdev_cmd = snapdev.format(sub_db=subtract_db, to_sub=to_subtract,
-                                     out=outname,
-                                     cores=cores, d_human=d_human, snap_cache_opt=snap_cache_opt)
-
-        to_subtract = outname
-
-    subtracted_out = '{}.{}.sam'.format(subtracted_output, subtraction_counter)
-
-    host_unmatched_fq = Path(human_basefile).with_suffix('.fastq')
-
-    # still bad, but better
-    with open(subtracted_out, 'r') as h, open(host_unmatched_fq, 'w') as fq:
-        for line in h:
-
-            if not line.startswith('@'):
-                l = line.split()
-
-                if line[3] == '*':
-
-                    o = '@{fst}\n{tenth}\n+{fst}\n{eleventh}'.format(fst=line[0],
-                                                                     tenth=line[9],
-                                                                     eleventh=line[10])
-                    fq.write(o)
-
-def snap_to_nt(fastq, run_mode, host_basefile, snap_edit_distance, snap_comp_db,
-               snap_fast_db, cores):
-
-    # TODO refactor once written
-    basef = Path(fastq).name
-
-    # SNAP unmatched sequences to NT
-    if not Path(fastq).with_suffix('.NT.snap.sam').exists():
-
-        snap_nt = 'snap_nt.sh {host_unmatched} {snap_db} {cores} \
-                       {cache_reset} {snap_distance}'
-
-        if run_mode == 'comprehensive':
-
-
-            run_shell(snap_nt.format(host_unmatched=str(host_basefile) + '.human.snap.unmatched.fastq',
-                                     snap_db=snap_comp_db, cores=cores, cache_reset=cache_reset,
-                                     snap_distance=snap_edit_distance))
-
-        else:  # run_mode == 'fast'
-
-            run_shell(snap_nt.format(host_unmatched=str(host_basefile) + '.human.snap.unmatched.fastq',
-                                     snap_db=snap_fast_db, cores=cores, cache_reset=cache_reset,
-                                     snap_distance = snap_edit_distance))
-
-
-
-
-    matches = run_shell('grep -Ev "^@" {}'.format(Path(fastq).with_suffix('')))
-
-    matches_sam = Path(fastq).with_suffix('.NT.snap.matched.sam')
-    unmatches_sam = Path(fastq).with_suffix('.NT.snap.unmatched.sam')
-
-    with open(matches_sam, 'w') as m:
-
-        matched = run_shell("awk '{if($3 != \"*\") print }'", input=matches)
-        m.write(matched)
-
-    with open(unmatches_sam, 'w') as u:
-
-        unmatched = run_shell("awk '{if($3 == \"*\") print }'", input=matches)
-        u.write(unmatched)
-
-    if not Path(fastq).with_suffix('.NT.snap.matched.all.annotated').exists():
-
-        # convert to FASTQ and retrieve full-length sequences
-
-        extract_fq_header = 'extractHeaderFromFastq_ncores.sh \
-                {cores} {cutadapt_fastq} {nt_snap_match} \
-                {nt_snap_match_fulllen} {nt_snap_unmatch} \
-                {nt_snap_unmatch_fulllen}'.format(
-                    cores=cores,
-                    cutadapt_fastq=Path(fastq).with_suffix('.cutadapt.fastq'),
-                    nt_snap_match=matches_sam,
-                    nt_snap_match_fulllen=matches_sam.with_suffix('.fulllength.fastq'),
-                    nt_snap_unmatch=unmatches_sam,
-                    nt_snap_unmatch_fulllen=unmatches_sam.with_suffix('.fulllength.fastq')
-                    )
-
-        run_shell(extract_fq_header)
-
-        snap_matched = '{}.NT.snap.matched'.format(basef)
-
-        # line 900 in original
-        run_shell('sort -k1,1 {0}.sam > {0}.sorted.sam'.format(snap_matched))
-        run_shell('cut -f 1-9 {0}.sorted.sam > {0}.sorted.sam.tmp1'.format(snap_matched))
-        run_shell('cut -f 12- {0}.sorted.sam > {0}.sorted.sam.tmp2'.format(snap_matched))
-
-        cmd1 = "awk '(NR%4==1) {printf(i\"%s\t\",$0)} (NR%4==2) {printf(\"%s\t\", $0)} (NR%4==0) {printf(\"%s\n\",$0)}' \
-                ${}.fulllength.fastq".format(snap_matched)
-
-        cmd2 = "sort -k1,1 | awk '{print $2 \"\t\" $3}' > {}.fulllength.sequence.txt".format(snap_matched)
-
-        res1 = run_shell(cmd1)
-        run_shell(cmd2, input=cmd1)
-
-        run_shell('paste {0}.sorted.sam.tmp1 \
-                   {0}.fulllength.sequence.txt \
-                   {0}.sorted.sam.tmp2 > \
-                   {0}.fulllength.sam'.format(snap_matched))
-
-        tax_lookup = 'taxonomy_lookup.pl {}.fulllength.sam sam nucl {} {}'.format(snap_matched, cores, taxonomy_db_dir)
-
-        run_shell(tax_lookup)
-
-        run_shell('sort -k 13.7n {0}.fulllength.all.annotated > \
-                   {0}.fulllength.all.annotated.sorted'.format(snap_matched))
-
-        os.remove('{}.fulllength.gi'.format(snap_matched))
-        os.remove('{}.fulllength.gi.taxonomy'.format(snap_matched))
-
-        # line 913
 def main():
 
     args = arguments()
+
+
     # TODO add taxonomy DB verification
     # TODO handle slave instances (line 633-637, 687-703 in original)
     # TODO verification mode
