@@ -2,6 +2,9 @@ from datetime import datetime
 import sys
 import functools
 import fileinput
+import pathlib
+
+from Bio import SeqIO
 
 def user_msg(*args):
     '''Wrapper for print() that prints to stderr'''
@@ -64,3 +67,16 @@ def annotated_to_fastq(annotated):
     fastq_lines = (fastq(line) for line in lines if not line.startswith('@'))
 
     return '\n'.join(fastq_lines)
+
+def fastq_to_fasta(fastq_path, fasta_path):
+    '''Reads a FASTQ file located at fastq_path and writes
+    its FASTA conversion to fasta_path
+    '''
+    msg = 'Parameter {} must be of type pathlib.Path'
+    assert isinstance(fastq_path, pathlib.Path), msg.format('fastq_path')
+    assert isinstance(fasta_path, pathlib.Path), msg.format('fasta_path')
+
+
+    with fastq_path.open('r') as fastq, fasta_path.open('w') as fasta:
+        for record in SeqIO.parse(fastq, 'fastq'):
+            SeqIO.write(record, fasta, 'fasta')
