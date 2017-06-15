@@ -1,8 +1,11 @@
+'''Utilities and shared functions for SURPI'''
+
 from datetime import datetime
 import sys
 import functools
 import fileinput
 import pathlib
+import subprocess
 
 from Bio import SeqIO
 
@@ -17,16 +20,18 @@ def logtime(name):
     '''
 
     def decorator(func):
+        '''Interface between wrapper and the outer logtime() function'''
 
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
+            '''Wraps func and prints to STDERR the runtime of func'''
 
             msg = 'Elapsed time for {}: {}'
             before = datetime.now()
 
             result = func(*args, *kwargs)
 
-            after  = datetime.now()
+            after = datetime.now()
 
             user_msg(msg.format(name, after - before))
             return result
@@ -45,22 +50,28 @@ def run_shell(cmd, **kwargs):
 def concatenate(*files, output):
     '''Concatenate files together and write them to output'''
 
-    with open(output, 'w') as o, fileinput.input(files)  as i:
-        for line in i:
-            o.write(line)
+    with open(output, 'w') as out, fileinput.input(files) as infiles:
+
+        for line in infiles:
+            out.write(line)
 
 def annotated_to_fastq(annotated):
     '''Converts and annotation Path to FASTQ format as a str.'''
 
     def fastq(line):
+        '''Reformats a SAM line as FASTQ'''
 
-        l = line.split()
+        split_line = line.split()
+
+        replacements = {'fst': split_line[0],
+                        'tenth': split_line[9],
+                        'eleventh': split_line[10]}
 
         if line[3] == '*':
 
             rec = '@{fst}\n{tenth}\n+{fst}\n{eleventh}\n'
 
-            return rec.format(fst=l[0], tenth=l[9], eleventh=l[10])
+            return rec.format(**replacements)
 
     lines = annotated.read_text().splitlines()
 
