@@ -67,7 +67,7 @@ def annotated_to_fastq(annotated):
                         'tenth': split_line[9],
                         'eleventh': split_line[10]}
 
-        if line[3] == '*':
+        if line[2] == '*':
 
             rec = '@{fst}\n{tenth}\n+{fst}\n{eleventh}\n'
 
