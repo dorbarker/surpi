@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
+'''Matches sample reads to known host sequence using SNAP'''
 
 import tempfile
 import subprocess
 from pathlib import Path
-from shutil import copy
 from utilities import user_msg, logtime, annotated_to_fastq
 
 def vmtouch(snap_db):
@@ -34,13 +33,17 @@ def set_snap_cache_option(snap_db):
 
     return snap_cache_option
 
-def host_subtract(preprocessed, output, snap_db_dir, cores, temp_dir_parent,
-                  edit_distance):
+def host_subtract(preprocessed, snap_db_dir, edit_distance, temp_dir, cores):
+    '''Subtracts preprocessed reads from host SNAP databases.
 
+    Writes the subtracted fastq and returns its file path.
+    '''
     @logtime('Host subtraction')
     def subtract(snap_db, to_subtract, output, pre):
+        '''Prepare and execute the SNAP search'''
 
-        subtract_cmd = ('snap-dev', snap_db, to_subtract, '-o', 'sam', output,
+        subtract_cmd = ('snap-aligner', 'single', snap_db, to_subtract,
+                        '-o', '-sam', output,
                         '-t', cores, '-x', '-f', '-h', '250',
                         '-d', edit_distance, '-n', '25', '-F', 'u',
                         '-map', pre)
@@ -52,13 +55,13 @@ def host_subtract(preprocessed, output, snap_db_dir, cores, temp_dir_parent,
 
     to_subtract = preprocessed
 
-    with tempfile.TemporaryDirectory(dir=temp_dir_parent) as temp_dir:
+    with tempfile.TemporaryDirectory(dir=temp_dir) as temp_dir_:
 
         for i, snap_db in enumerate(snap_db_dir.glob('*')):
 
             snap_cache_option = set_snap_cache_option(snap_db)
 
-            temp_output = Path(temp_dir) / i
+            temp_output = Path(temp_dir_) / i
 
             subtract(snap_db, to_subtract, temp_output, snap_cache_option)
 
