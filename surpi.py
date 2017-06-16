@@ -12,6 +12,7 @@ from pathlib import Path
 # surpi imports
 from utilities import run_shell, user_msg
 from snap_to_nt import snap
+from map_host import host_subtract
 
 def arguments():
 
@@ -172,8 +173,6 @@ def arguments():
                         help='dropcache if free RAM (GB) falls below this \
                              value. If 0, then the cache is never reset [0]')
 
-    # TODO: Add AWS-related values
-
     return parser.parse_args()
 
 def ensure_fastq(inputfile, mode):
@@ -332,35 +331,53 @@ def validate_fastqs(fastq_file, logfile, mode):
             result = run_shell(modes[mode].format(fastq_file, logfile))
 
         except CalledProcessError:
-            msg = '{} appears to be invalid. Check {} for details'.format(fastq_file, logfile)
-            print(msg, file=sys.stderr)
+            msg = '{} appears to be invalid. Check {} for details'
+            user_msg(msg.format(fastq_file, logfile))
 
             if mode == 3:
 
-                print('Continuing anyway...', file=sys.stderr)
+                user_msg('Continuing anyway...')
 
             else:
                 sys.exit(65)
 
-def preprocess(name, quality, length_cutoff, cores, adapter_set, start,
-               crop_length, temp_dir):
-    # TODO user messages
+@logtime('Preprocessing')
+def preprocess(name, quality, length_cutoff, adapter_set, start,
+               crop_length, temp_dir, cores):
+    '''Preprocesses input FASTQ, including header modification,
+    quality filtering, adapter trimming, and complexity filtering.
+    '''
 
-    cmd = 'preprocess_ncores.sh {name}.fastq {qual} N {len_cut} {cores} Y N \
-            {adapters} {start} {crop_len} {temp_dir} >& {name}.preprocess.log'
+    log = name.with_suffix('.preprocess.log')
 
-    run_shell(cmd.format(name=name, qual=quality, len_cut=length_cutoff,
-                         cores=cores, adapters=adapter_set, start=start,
-                         crop_len=crop_length, temp_dir=temp_dir))
+    cmd = ('preprocess_ncores.sh', name.with_suffix('.fastq'), quality, cores,
+           adapter_set, start, crop_length, temp_dir)
+
+    log_data = subprocess.check_output(map(str, cmd),
+                                       stderr=subprocess.STDOUT,
+                                       universal_newlines=True)
+
+    log.write_text(log_data)
+
     try:
-        os.path.getsize(name + 'preprocess.log')
+        os.path.getsize(log)
         os.path.getsize(name + '.cutadapt.fastq')
+
     except OSError:
         user_msg('Preproessing {} appears to have failed'.format(name))
         sys.exit(65)
 
-def surpi():
-    pass
+    return name.with_suffix('.preprocessed.fastq')
+
+def surpi(sample, quality, length_cutoff, adapter_set, start, crop_length,
+          temp_dir, edit_distance, snap_db_dir, cores):
+
+    preprocessed = preprocess(sample, quality, length_cutoff, adapter_set,
+                              start, crop_length, temp_dir, cores)
+
+    subtracted_fastq = host_subtract(preprocessed, snap_db_dir, edit_distance,
+                                     temp_dir, cores)
+
 
 def main():
 
