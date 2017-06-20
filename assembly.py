@@ -1,7 +1,7 @@
-from Bio import SeqIO
 from multiprocessing import cpu_count
 import argparse
 import subprocess
+from utilities import concatenate, fastq_to_fasta
 
 def arguments():
 
@@ -33,28 +33,19 @@ def arguments():
 
     return parser.parse_args()
 
-def fastq_to_fasta(infile, outfile):
-
-    with open(infile, 'r') as fastq, open(outfile, 'w') as fasta:
-
-        for rec in SeqIO.parse(fastq, 'fastq'):
-            rec.name = 'Vir{}'.format( rec.name )
-            print(rec.name)
-            SeqIO.write(rec, fasta, 'fasta')
-
 def sequniq(matched, uniqvir, uniqunmatched, unmatched_add_vir):
+    '''Extracts the unique sequences from `matched`, concatenates them with
+    the unique unmatched sequences, and writes it all to `unmatched_add_vir`
+    '''
 
     sequniq_cmd = ('gt', 'sequniq', '-seqit', '-force', '-o', uniqvir, matched)
 
-    subprocess.call(sequniq_cmd)
+    subprocess.check_call(sequniq_cmd)
 
-    # cat uniqvir and uniqunmatched
-    with open(uniqvir, 'r') as m, open(uniqunmatched, 'r') as u:
-
-        with open(unmatched_add_vir, 'w') as o:
-            o.write('{}\n{}'.format(m.read(), u.read()))
+    concatenate(uniqvir, uniqunmatched, output=unmatched_add_vir)
 
 def abyss(unmatched_add_vir, length, cores, kmer, ignore_barcodes):
+    '''Executes abyss_minimus.sh'''
 
     contig_cutoff = int(1.75 * length)
 
@@ -63,18 +54,20 @@ def abyss(unmatched_add_vir, length, cores, kmer, ignore_barcodes):
 
     subprocess.call(abyss_cmd)
 
-def process(matched_vir_fq, matched_vir_fa, matched_vir_uniq, uniqunmatched,
-            addvir, length, cores, kmer, ignore_barcodes):
+def assemble(matched_vir_fastq, matched_vir_fasta, matched_vir_uniq,
+             uniqunmatched, addvir, sample_fastq_length, cores, kmer,
+             ignore_barcodes):
 
-    sequniq(matched_vir_fa, matched_vir_uniq, uniqunmatched, addvir)
+    fastq_to_fasta(matched_vir_fastq, matched_vir_fasta)
 
-    abyss(addvir, length, cores, kmer, ignore_barcodes)
+    sequniq(matched_vir_fasta, matched_vir_uniq, uniqunmatched, addvir)
+
+    abyss(addvir, sample_fastq_length, cores, kmer, ignore_barcodes)
 
 def main():
 
     args = arguments()
 
-    process()
 
 if __name__ == '__main__':
     main()

@@ -10,9 +10,11 @@ import sys
 from pathlib import Path
 
 # surpi imports
-from utilities import run_shell, user_msg
+from preprocessing import preprocess
+from utilities import run_shell, user_msg, logtime
 from snap_to_nt import snap
 from map_host import host_subtract
+from assembly import assemble
 
 def arguments():
 
@@ -241,8 +243,7 @@ def check_program_versions():
         'seqtk':     "seqtk 2>&1 | head -3 | tail -1 | awk '{print $2}'",
         'cutadapt':  "cutadapt --version",
         'prinseqlite':  "prinseq-lite.pl --version 2>&1 | awk '{print $2}'",
-        'snap':      "snap 2>&1 | grep version | awk '{print $5}'",
-        'snap-dev':  "snap-dev 2>&1 | grep version | awk '{print $5}'",
+        'snap-aligner': "snap 2>&1 | grep version | awk '{print $5}'",
         'rapsearch': "rapsearch 2>&1 | head -2 | tail -1 | awk '{print $2}'",
         'abyss_pe':  "abyss-pe version | head -2 | tail -1 | awk '{print $3}'",
         'abyss_p':   "ABYSS-P  --version | head -1 | awk '{print $3}'",
@@ -257,8 +258,8 @@ def check_program_versions():
 
         print('The following dependencies are missing:', file=sys.stderr)
 
-        for mal in malfored:
-            print(mal, file=sys.stderr)
+        for mal in malformed:
+            user_msg(mal)
 
         sys.exit(65)
 
@@ -330,7 +331,7 @@ def validate_fastqs(fastq_file, logfile, mode):
         try:
             result = run_shell(modes[mode].format(fastq_file, logfile))
 
-        except CalledProcessError:
+        except subprocess.CalledProcessError:
             msg = '{} appears to be invalid. Check {} for details'
             user_msg(msg.format(fastq_file, logfile))
 
@@ -341,49 +342,25 @@ def validate_fastqs(fastq_file, logfile, mode):
             else:
                 sys.exit(65)
 
-@logtime('Preprocessing')
-def preprocess(name, quality, length_cutoff, adapter_set, start,
-               crop_length, temp_dir, cores):
-    '''Preprocesses input FASTQ, including header modification,
-    quality filtering, adapter trimming, and complexity filtering.
-    '''
+@logtime('Total Runtime')
+def surpi(sample, workdir, temp_dir, fastq_type, quality_cutoff, length_cutoff,
+          adapter_set, crop_start, crop_length, edit_distance, snap_db_dir,
+          tax_db_dir, ribo_dir, cache_reset, comprehensive, cores):
+    '''Master function for SURPI pipeline'''
 
-    log = name.with_suffix('.preprocess.log')
-
-    cmd = ('preprocess_ncores.sh', name.with_suffix('.fastq'), quality, cores,
-           adapter_set, start, crop_length, temp_dir)
-
-    log_data = subprocess.check_output(map(str, cmd),
-                                       stderr=subprocess.STDOUT,
-                                       universal_newlines=True)
-
-    log.write_text(log_data)
-
-    try:
-        os.path.getsize(log)
-        os.path.getsize(name + '.cutadapt.fastq')
-
-    except OSError:
-        user_msg('Preproessing {} appears to have failed'.format(name))
-        sys.exit(65)
-
-    return name.with_suffix('.preprocessed.fastq')
-
-def surpi(sample, quality, length_cutoff, adapter_set, start, crop_length,
-          temp_dir, edit_distance, snap_db_dir, cores):
-
-    preprocessed = preprocess(sample, quality, length_cutoff, adapter_set,
-                              start, crop_length, temp_dir, cores)
+    preprocessed = preprocess(sample, workdir, temp_dir, adapter_set,
+                              fastq_type, quality_cutoff, length_cutoff,
+                              crop_start, crop_length)
 
     subtracted_fastq = host_subtract(preprocessed, snap_db_dir, edit_distance,
                                      temp_dir, cores)
 
+    snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
+         edit_distance, cache_reset, comprehensive, temp_dir)
 
 def main():
-
-    args = arguments()
-
-
+    pass
+    #args = arguments()
     # TODO add taxonomy DB verification
     # TODO handle slave instances (line 633-637, 687-703 in original)
     # TODO verification mode

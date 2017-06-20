@@ -109,7 +109,6 @@ def preprocess(infile, workdir, tempdir, adapter_set, fastq_type,
     Files in `tempdir` are destroyed. Files in `workdir` are kept.
     '''
 
-
     out_base = workdir / infile.stem
 
     cutadapt_output = out_base.with_suffix('.cutadapt.fastq')
@@ -130,3 +129,5 @@ def preprocess(infile, workdir, tempdir, adapter_set, fastq_type,
         dust(cropped, dusted)
 
         dusted.with_suffix('.dusted.fastq').rename(preproc)
+
+    return preproc
