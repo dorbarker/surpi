@@ -7,9 +7,10 @@ import tempfile
 from functools import partial
 from pathlib import Path
 from multiprocessing import cpu_count
-from utilities import logtime, annotated_to_fastq, fastq_to_fasta
+from utilities import logtime, annotated_to_fastq, fastq_to_fasta, sam_to_fasta
 from Bio import SeqIO
 from taxonomy_lookup import taxonomy_lookup, table_generator
+from preprocessing import crop_reads
 
 def arguments():
 
@@ -113,11 +114,65 @@ def separate_ranked_taxonomy(ranks, annotations, result_dir):
 
     return result_file
 
-def ribo_snap(name, mode, cores, ribo_dir):
+def ribo_snap(inputfile, mode, cores, ribo_dir, tempdir):
 
-    ribo_snap = ('ribo_snap_bac_euk.sh', name, mode, cores, ribo_dir)
+    def extract_sam_from_sam(infile, outfile, riboremoved):
 
-    subprocess.check_call(map(str, ribo_snap))
+        with riboremoved.open('r') as noribo:
+            headers = [line.split()[0] for line in noribo]
+
+        with infile.open('r') as inf, outfile.open('w') as output:
+
+            for line in inf:
+
+                if line.split()[0] in headers:
+                    output.write(line)
+
+    noribo = inputfile.with_suffix('.noribo.annotated')
+
+    if mode == 'BAC':
+
+        snap_large = ribo_dir / 'snap_index_23sRNA'
+        snap_small = ribo_dir / 'snap_index_rdp_typed_iso_goodq_9210seqs'
+
+    else:
+
+        snap_large = ribo_dir / \
+                'snap_index_28s_rRNA_gene_NOT_partial_18s_spacer_5.8s.fa'
+        snap_small = ribo_dir / 'snap_index_18s_rRNA_gene_not_partial.fa'
+
+    with tempfile.TemporaryDirectory(dir=str(tempdir)) as ephemeral:
+
+        throw_away = Path(ephemeral)
+        fasta = (throw_away / inputfile.stem).with_suffix('.fasta')
+        fastq = fasta.with_suffix('.fastq')
+        crop = fastq.with_suffix('.fastq.crop')
+        large_out = crop.with_suffix('.noLargeS.unmatched')
+        small_out = crop.with_suffix('.noSmallS_LargeS.sam')
+
+        sam_to_fasta(inputfile, fasta)
+
+        fastq.write_text(subprocess.check_output(('fasta_to_fastq', str(fasta)),
+                                                 universal_newlines=True))
+
+        crop_reads(fastq, crop, 10, 75)
+
+        snap1 = ('snap', 'single', snap_large, crop, '-o', large_out,
+                 '-t', cores, '-f', '-h', 250, '-d', 18, '-n', 200, '-F', 'u')
+
+        subprocess.check_call(map(str, snap1))
+
+        # inplace conversion of sam -> fastq
+        large_out.write_text(annotated_to_fastq(large_out))
+
+        snap2 = ('snap', 'single', snap_small, large_out, '-o', small_out,
+                 '-t', cores, '-h', 250, '-d', 18, '-n', 200, '-F', 'u')
+
+        subprocess.check_call(map(str, snap2))
+
+        extract_sam_from_sam(inputfile, noribo, small_out)
+
+    table_generator(noribo, 'SNAP', 'N', 'Y', 'N', 'N')
 
 def extract_headers(basef, workdir, cores):
 
@@ -212,16 +267,6 @@ def extract_to_fast(fastq, fasta, output):
 
         subprocess.check_call(map(str, cmd))
 
-    def crop_reads(infile, outfile):
-        '''Runs crop_reads.csh on `infile` with some default settings'''
-
-        cmd = ('crop_reads.csh', infile, 25, 50)
-
-        cropped = subprocess.check_output(map(str, cmd),
-                                          universal_newlines=True)
-
-        outfile.write_text(cropped)
-
     def sort_fasta_by_length(unsorted_fasta, sorted_fasta):
         '''Sorts a FASTA file by descending sequence length and writes it to
         a new FASTA file
@@ -251,7 +296,7 @@ def extract_to_fast(fastq, fasta, output):
 
         sort_fasta_by_length(fasta, sorted_fasta)
 
-        crop_reads(sorted_fasta, cropped)
+        crop_reads(sorted_fasta, cropped, 25, 50)
 
         sequniq(cropped, uniq)
 

@@ -91,3 +91,15 @@ def fastq_to_fasta(fastq_path, fasta_path):
     with fastq_path.open('r') as fastq, fasta_path.open('w') as fasta:
         for record in SeqIO.parse(fastq, 'fastq'):
             SeqIO.write(record, fasta, 'fasta')
+
+def sam_to_fasta(samfile, fastafile):
+    '''Coverts a SAM-formatted file to FASTA format'''
+
+    with samfile.open('r') as sam, fastafile.open('w') as fasta:
+
+        for line in sam:
+
+            split_line = line.strip().split()
+
+            fasta_line = '>{}\n{}\n'.format(split_line[0], split_line[9])
+            fasta.write(fasta_line)
