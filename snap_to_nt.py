@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import os
 import argparse
 import subprocess
 import tempfile
@@ -60,20 +59,50 @@ def write_sam(lines, outpath):
         out.write('\n'.join(lines))
 
 @logtime('SNAP unmatched sequences')
-def snap_unmatched(basef, workdir, db_dir, unmatched, cache_reset,
-                   edit_distance, cores):
+def snap_unmatched(infile, workdir, tempdir, snap_db_dir, edit_distance, cores):
 
-    # edit_distance == d_NT_alignment
-    snap_sam = basef.with_suffix('.NT.snap.sam')
+    first_pass_done = False
 
-    if not snap_sam.exists():
 
-        snap_nt_cmd = ('snap_nt.sh', unmatched, db_dir, cores, cache_reset,
-                       edit_distance, 'snap-aligner')
+    with tempfile.TemporaryDirectory(dir=tempdir) as ephemeral:
 
-        subprocess.check_call(map(str, snap_nt_cmd))
+        throw_away = Path(ephemeral)
 
-    os.rename(str(workdir / unmatched), str(workdir / snap_sam))
+        tmp_fastq = (throw_away / infile.stem).with_suffix('.tmp.fastq')
+        tmp_sam = tmp_fastq.with_suffix('.sam')
+        prev_sam = tmp_sam.with_suffix('.prev')
+
+        for snap_db in snap_db_dir.glob('*'):
+
+            if not first_pass_done:
+
+                snap_cmd = ('snap-aligner', 'single', snap_db, infile,
+                            '-o', tmp_sam, '-t', cores, '-x', '-f', '-h', 250,
+                            '-d', edit_distance, '-n', 25)
+
+            else:
+
+                snap_cmd = ('snap-aligner', 'single', snap_db, tmp_fastq,
+                            '-o', tmp_sam, '-t', cores, '-x', '-f', '-h', 250,
+                            '-d', edit_distance, '-n', 25)
+
+            subprocess.check_call(map(str, snap_cmd))
+
+            #TODO: fix this
+            compare_sam = ('python2', 'compare_sam.py', tmp_sam, prev_sam)
+            subprocess.check_call(map(str, compare_sam))
+
+            tmp_fastq.write_text(annotated_to_fastq(prev_sam))
+
+            first_pass_done = True
+
+        # TODO: fix this too
+        # *.NT.sam doesn't appear anywhere else in the original SURPI - WTF?
+            # Using *.NT.snap.sam instead
+        update_sam = ('python2', 'update_sam.py', prev_sam,
+                      workdir / infile.with_suffix('.NT.snap.sam'))
+
+        subprocess.check_output(map(str, update_sam))
 
 def separate_ranked_taxonomy(ranks, annotations, result_dir):
     '''Recursively searches through `ranks` and writes taxonomy results
@@ -84,6 +113,9 @@ def separate_ranked_taxonomy(ranks, annotations, result_dir):
     '''
 
     def condition(line, to_find, to_exclude):
+        '''Returns True if the `to_find` pattern is in `line` and
+        `to_exclude` is not in `line`
+        '''
         return to_find in line and to_exclude not in line
 
     def tax_search_recursor(rank_list):
@@ -115,8 +147,14 @@ def separate_ranked_taxonomy(ranks, annotations, result_dir):
     return result_file
 
 def ribo_snap(inputfile, mode, cores, ribo_dir, tempdir):
+    '''Runs SNAP to subtract `inputfile` reads from databases
+    of bacterial and ribosomal reads
+    '''
 
     def extract_sam_from_sam(infile, outfile, riboremoved):
+        '''Writes to `outfile` the reads in `infile` whose headers
+        are found in `riboremoved`
+        '''
 
         with riboremoved.open('r') as noribo:
             headers = [line.split()[0] for line in noribo]
@@ -189,7 +227,8 @@ def extract_headers(basef, workdir, cores):
 
     return cmd[-1]
 
-def lookup_taxonomy(basef, annotated, workdir, tax_db_dir, ribo_dir, cores):
+def lookup_taxonomy(basef, annotated, workdir, tax_db_dir):
+    '''Looks up the taxonomy of annotated reads'''
 
     full_length_fastq = basef.with_suffix('.NT.snap.matched.fulllength.fastq')
     full_length_sam = full_length_fastq.with_suffix('.sam')
@@ -236,9 +275,6 @@ def lookup_taxonomy(basef, annotated, workdir, tax_db_dir, ribo_dir, cores):
                                            'Mammalia', 'Primates'),
                                     annotations=annotated,
                                     result_dir=workdir)
-
-    ribo_snap(bacteria, 'BAC', cores, ribo_dir)
-    ribo_snap(euks, 'EUK', cores, ribo_dir)
 
     return viruses, bacteria, euks
 
@@ -303,7 +339,7 @@ def extract_to_fast(fastq, fasta, output):
         subseq(uniq, fasta, output)
 
 def snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
-         edit_distance, cache_reset, comprehensive):
+         edit_distance, cache_reset, comprehensive, temp_dir):
 
     basef = Path(sample.stem)
     annotated = workdir / basef.with_suffix('.annotated')
@@ -321,8 +357,11 @@ def snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
     if not annotated.exists():
 
         fulllength_fastq = extract_headers(basef, workdir, cores)
-        viruses, bacteria, euks = lookup_taxonomy(basef, workdir, tax_db_dir,
-                                                  ribo_dir, cores)
+        viruses, bacteria, euks = lookup_taxonomy(basef, annotated, workdir,
+                                                  tax_db_dir, ribo_dir, cores)
+
+    ribo_snap(bacteria, 'BAC', cores, ribo_dir, temp_dir)
+    ribo_snap(euks, 'EUK', cores, ribo_dir, temp_dir)
 
     table_generator(viruses, 'SNAP', 'Y', 'Y', 'Y', 'Y')
 
@@ -334,6 +373,8 @@ def snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
         extract_to_fast(fulllength_fastq,
                         fulllength_fastq.with_suffix('.fasta'),
                         fulllength_fastq.with_suffix('.uniq.f1.fasta'))
+
+    # TODO: Return Paths needed for assembly.py
 
 def main():
 
