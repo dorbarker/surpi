@@ -22,7 +22,8 @@ ADAPTERS = {
 ADAPTERS['nexsoltruseq'] = ADAPTERS['truseq'] + ADAPTERS['nextera']
 ADAPTERS['nexsolb'] = ADAPTERS['truseq'][:2] + ADAPTERS['nextera']
 
-def cutadapt(infile, outfile, adapter_set, qual, quality_cutoff, length_cutoff):
+def cutadapt(infile, outfile, adapter_set, fastq_type,
+             quality_cutoff, length_cutoff):
     '''Runs cutadapt on an input FASTQ file'''
 
     def format_adapters(flags, adapters):
@@ -32,8 +33,9 @@ def cutadapt(infile, outfile, adapter_set, qual, quality_cutoff, length_cutoff):
     # Not including keep short reads because in the original SURPI script,
     # short reads are *never* kept
 
-    adapter_info = infile.with_suffix('.adapterinfo')
-    summary_log = infile.with_suffix('.summary.log')
+    qual = 33 if fastq_type == 'S' else 64
+    adapter_info = outfile.with_suffix('.adapterinfo')
+    summary_log = outfile.with_suffix('.summary.log')
 
     args = ('cutadapt', '-n', 15, '-O', 10, '-q', quality_cutoff,
             '-m', length_cutoff, '--quality-base={}'.format(qual),
@@ -52,8 +54,6 @@ def cutadapt(infile, outfile, adapter_set, qual, quality_cutoff, length_cutoff):
 
         flags = ('-g', '-a', '-a', '-g', '-a', '-a', '-a', '-a', '-a')
         adapter_args = format_adapters(flags, ADAPTERS['nexsoltruseq'])
-
-        cmd = args + adapter_args + (infile, )
 
     elif adapter_set == 'nexsolb':
 
@@ -103,12 +103,12 @@ def dust(infile, dusted):
 
 def preprocess(infile, workdir, tempdir, adapter_set, fastq_type,
                quality_cutoff, length_cutoff, crop_start, crop_length):
-    '''Entry point for preprocessing.py
+    '''Entry point for preprocessing.py Preprocesses FASTQ file for
+    use in the SURPI pipeline
 
-    Preprocesses FASTQ file for use in SURPI
+    Files in `tempdir` are destroyed. Files in `workdir` are kept.
     '''
 
-    qual = 33 if fastq_type == 'S' else 64
 
     out_base = workdir / infile.stem
 
@@ -122,8 +122,8 @@ def preprocess(infile, workdir, tempdir, adapter_set, fastq_type,
         cropped = throw_away.with_suffix('.cropped.fastq')
         dusted = throw_away.with_suffix('.dusted')
 
-        cutadapt(infile, cutadapt_output, adapter_set, qual, quality_cutoff,
-                 length_cutoff)
+        cutadapt(infile, cutadapt_output, adapter_set, fastq_type,
+                 quality_cutoff, length_cutoff)
 
         crop_reads(cutadapt_output, cropped, crop_start, crop_length)
 
