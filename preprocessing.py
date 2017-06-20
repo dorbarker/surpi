@@ -1,7 +1,10 @@
+'''Preprocesses fastq file for surpi, by running cutadapt,
+trimming read lengths, and DUST masking sequence.
+'''
 import tempfile
 import subprocess
 from itertools import chain
-import re
+from pathlib import Path
 
 ADAPTERS = {
     'truseq': ('GTTTCCCACTGGAGGATA',
@@ -19,17 +22,12 @@ ADAPTERS = {
 ADAPTERS['nexsoltruseq'] = ADAPTERS['truseq'] + ADAPTERS['nextera']
 ADAPTERS['nexsolb'] = ADAPTERS['truseq'][:2] + ADAPTERS['nextera']
 
-def cutadapt(infile, outfile, adapter_set, qual, keep_short, quality_cutoff,
-             length_cutoff):
+def cutadapt(infile, outfile, adapter_set, qual, quality_cutoff, length_cutoff):
     '''Runs cutadapt on an input FASTQ file'''
 
     def format_adapters(flags, adapters):
         '''Pairs each adapter with the cutadapt flags'''
         return tuple(chain(*zip(flags, adapters)))
-
-    def post_proc(filepath):
-
-        filepath.read_text()
 
     # Not including keep short reads because in the original SURPI script,
     # short reads are *never* kept
@@ -43,16 +41,12 @@ def cutadapt(infile, outfile, adapter_set, qual, keep_short, quality_cutoff,
 
     if adapter_set == 'truseq':
 
-        adapter_args = format_adapters(('-g', '-a', '-a', '-g', '-a' '-a'),
+        adapter_args = format_adapters(('-g', '-a', '-a', '-g', '-a', '-a'),
                                        ADAPTERS['truseq'])
-
-        cmd = args + adapter_args + (infile,)
 
     elif adapter_set == 'nextera':
 
         adapter_args = format_adapters(('-a', '-a', '-a'), ADAPTERS['nextera'])
-
-        cmd = args + adapter_args + (infile, )
 
     elif adapter_set == 'nexsoltruseq':
 
@@ -66,11 +60,11 @@ def cutadapt(infile, outfile, adapter_set, qual, keep_short, quality_cutoff,
         adapter_args = format_adapters(('-g', '-a', '-a', '-a', '-a'),
                                        ADAPTERS['nexsolb'])
 
-        cmd = args + adapter_args + (infile, )
-
     else:
         # TODO: Error handling
-        '''Something has gone awry'''
+        assert False
+
+    cmd = args + adapter_args + (infile, )
 
     log = subprocess.check_output(map(str, cmd), universal_newlines=True)
 
@@ -80,16 +74,59 @@ def cutadapt(infile, outfile, adapter_set, qual, keep_short, quality_cutoff,
     # sed 's/^$/N/g' call from the original SURPI is useless
 
 
+def crop_reads(infile, outfile, start, length):
+    '''Crops reads found at infile for `length` reads beginning
+    at the 1-indexed position `start`
 
-def crop():
-    pass
+    Writes results to `outfile`, which may be the same Path as `infile`
+    '''
 
-def dust():
-    pass
+    strt = start - 1
+    end = strt + length
 
-def preprocess(infile, outfile, tempdir):
+    with infile.open('r') as reads:
 
-    # TODO: confirm fastq filter step is never run
-    # cutadapt
-    # cutadapt postprocessing
-    pass
+        lines = [line.strip() if idx % 2 is 1 else line.strip()[strt:end]
+                 for idx, line in enumerate(reads.readlines(), 1)]
+
+    outfile.write_text('\n'.join(lines))
+
+def dust(infile, dusted):
+    '''DUST mask infile and write it to `dusted`.fastq'''
+
+    cmd = ('prinseq-lite.pl', '-fastq', infile, '-out_format', 3,
+           '-out_good', dusted,
+           '-out_bad', infile.with_suffix('.cutadapt.cropped.dusted.bad'),
+           '-log', '-lc_method', 'dust', '-lc_threshold', 7)
+
+    subprocess.check_call(map(str, cmd))
+
+def preprocess(infile, workdir, tempdir, adapter_set, fastq_type,
+               quality_cutoff, length_cutoff, crop_start, crop_length):
+    '''Entry point for preprocessing.py
+
+    Preprocesses FASTQ file for use in SURPI
+    '''
+
+    qual = 33 if fastq_type == 'S' else 64
+
+    out_base = workdir / infile.stem
+
+    cutadapt_output = out_base.with_suffix('.cutadapt.fastq')
+    preproc = out_base.with_suffix('.preprocessed.fastq')
+
+    # TODO: handle space removing
+    with tempfile.TemporaryDirectory(dir=str(tempdir)) as ephemeral:
+
+        throw_away = Path(ephemeral) / infile.stem
+        cropped = throw_away.with_suffix('.cropped.fastq')
+        dusted = throw_away.with_suffix('.dusted')
+
+        cutadapt(infile, cutadapt_output, adapter_set, qual, quality_cutoff,
+                 length_cutoff)
+
+        crop_reads(cutadapt_output, cropped, crop_start, crop_length)
+
+        dust(cropped, dusted)
+
+        dusted.with_suffix('.dusted.fastq').rename(preproc)
