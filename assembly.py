@@ -1,50 +1,27 @@
-from multiprocessing import cpu_count
-import argparse
 import subprocess
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from Bio import SeqIO
 from utilities import concatenate, fastq_to_fasta
 
-def arguments():
+def fastq_seq_length(inputfile: Path) -> int:
+    '''Returns the length of the first sequence in a FASTQ file'''
 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('-k', '--kmer', type=int, default=34,
-                        help='k-mer size for ABySS [34]')
-
-    # TODO handle this automatically
-    parser.add_argument('--length', type=int, help='Length of line 1 in FASTQ')
-
-    parser.add_argument('--ignore-barcodes',
-                        choices=('Y', 'N'),
-                        default='N',
-                        help="If 'Y', then assemble all barcodes together in \
-                              a single assembly, otherwise assemble each \
-                              barcode separately [N]")
-
-    parser.add_argument('--cores', default=cpu_count(), type=int,
-                        help='CPU cores to use [all]')
-
-    parser.add_argument('matched', help='Matched viral FASTQ')
-
-    parser.add_argument('unmatched', help='Unmatched FASTQ')
-
-    parser.add_argument('unmatched-add-vir',
-                        help='Path to create FASTA of unmatched reads \
-                              combined with viral reads')
-
-    return parser.parse_args()
+    with inputfile.open('r') as fastq:
+        for rec in SeqIO.parse(fastq, 'fastq'):
+            length = len(rec.seq)
+            break
+        return length
 
 def sequniq(matched, uniqvir, uniqunmatched, unmatched_add_vir):
-    '''Extracts the unique sequences from `matched`, concatenates them with
-    the unique unmatched sequences, and writes it all to `unmatched_add_vir`
-    '''
+    '''Extracts the unique sequences from `matched`'''
 
     sequniq_cmd = ('gt', 'sequniq', '-seqit', '-force', '-o', uniqvir, matched)
 
-    subprocess.check_call(sequniq_cmd)
+    subprocess.check_call(map(str, sequniq_cmd))
 
-    concatenate(uniqvir, uniqunmatched, output=unmatched_add_vir)
-
-def abyss(unmatched_add_vir, length, cores, kmer, ignore_barcodes):
+def abyss(unmatched_add_vir, length, contig_cutoff, cores, kmer,
+          ignore_barcodes):
     '''Executes abyss_minimus.sh'''
 
     contig_cutoff = int(1.75 * length)
@@ -54,20 +31,40 @@ def abyss(unmatched_add_vir, length, cores, kmer, ignore_barcodes):
 
     subprocess.call(abyss_cmd)
 
-def assemble(matched_vir_fastq, matched_vir_fasta, matched_vir_uniq,
-             uniqunmatched, addvir, sample_fastq_length, cores, kmer,
-             ignore_barcodes):
+def assemble(matched_vir_fastq: Path, uniqunmatched: Path, workdir: Path,
+             tempdir: Path, sample_fastq: Path, contig_cutoff: int,
+             kmer: int, ignore_barcodes: bool, cores: int) -> Path:
 
-    fastq_to_fasta(matched_vir_fastq, matched_vir_fasta)
+    # matched_vir_fastq is temporary
+    # uniqunmatched comes from extract_to_fast
+    # matched_vir_uniq is created by sequniq, only used here,
+        # then sent to workdir
+    # addvir is created by sequniq
+    # sample_fastq_length comes externally?
 
-    sequniq(matched_vir_fasta, matched_vir_uniq, uniqunmatched, addvir)
+    sample_fq_length = fastq_seq_length(sample_fastq)
 
-    abyss(addvir, sample_fastq_length, cores, kmer, ignore_barcodes)
+    addvir = (workdir / matched_vir_fastq.stem).with_suffix('.addVir.fasta')
 
-def main():
+    # TODO: change horrible name
+    output_name = 'all.{}.unitigs.cut{}.{}-mini.fasta'.format(addvir.name,
+                                                              sample_fq_length,
+                                                              contig_cutoff)
 
-    args = arguments()
+    output = addvir.with_name(output_name)
 
+    with TemporaryDirectory(dir=str(tempdir)) as ephemeral:
+        throw_away_base = Path(ephemeral) / matched_vir_fastq.stem
 
-if __name__ == '__main__':
-    main()
+        matched_vir_fasta = throw_away_base.with_suffix('.fasta')
+        matched_vir_uniq = throw_away_base.with_suffix('.uniq.fasta')
+
+        fastq_to_fasta(matched_vir_fastq, matched_vir_fasta)
+
+        sequniq(matched_vir_fasta, matched_vir_uniq, uniqunmatched, addvir)
+
+        concatenate(matched_vir_uniq, uniqunmatched, output=addvir)
+
+    abyss(addvir, sample_fq_length, contig_cutoff, cores, kmer, ignore_barcodes)
+
+    return output

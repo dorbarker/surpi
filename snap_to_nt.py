@@ -10,6 +10,7 @@ from utilities import logtime, annotated_to_fastq, fastq_to_fasta, sam_to_fasta
 from Bio import SeqIO
 from taxonomy_lookup import taxonomy_lookup, table_generator
 from preprocessing import crop_reads
+import update_sam
 
 def arguments():
 
@@ -88,21 +89,15 @@ def snap_unmatched(infile, workdir, tempdir, snap_db_dir, edit_distance, cores):
 
             subprocess.check_call(map(str, snap_cmd))
 
-            #TODO: fix this
-            compare_sam = ('python2', 'compare_sam.py', tmp_sam, prev_sam)
-            subprocess.check_call(map(str, compare_sam))
-
+            update_sam.compare_sam(tmp_sam, prev_sam)
             tmp_fastq.write_text(annotated_to_fastq(prev_sam))
 
             first_pass_done = True
 
-        # TODO: fix this too
         # *.NT.sam doesn't appear anywhere else in the original SURPI - WTF?
             # Using *.NT.snap.sam instead
-        update_sam = ('python2', 'update_sam.py', prev_sam,
-                      workdir / infile.with_suffix('.NT.snap.sam'))
-
-        subprocess.check_output(map(str, update_sam))
+        update_sam.update_sam(prev_sam,
+                              workdir / infile.with_suffix('.NT.snap.sam'))
 
 def separate_ranked_taxonomy(ranks, annotations, result_dir):
     '''Recursively searches through `ranks` and writes taxonomy results
@@ -278,7 +273,7 @@ def lookup_taxonomy(basef, annotated, workdir, tax_db_dir):
 
     return viruses, bacteria, euks
 
-def extract_to_fast(fastq, fasta, output):
+def extract_to_fast(fastq, fasta, output, tempdir):
 
     def subseq(infile, parent, outfile):
 
@@ -320,9 +315,9 @@ def extract_to_fast(fastq, fasta, output):
 
     fastq_to_fasta(fastq, fasta)
 
-    with tempfile.TemporaryDirectory() as temp_dir:
+    with tempfile.TemporaryDirectory(dir=str(tempdir)) as ephemeral:
 
-        temp_dir_path = Path(temp_dir)
+        temp_dir_path = Path(ephemeral)
 
         sorted_fasta = (temp_dir_path / fasta).with_suffix('.sorted')
 
@@ -360,6 +355,8 @@ def snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
         viruses, bacteria, euks = lookup_taxonomy(basef, annotated, workdir,
                                                   tax_db_dir, ribo_dir, cores)
 
+        viruses_fastq = viruses.with_suffix('.fastq')
+
     ribo_snap(bacteria, 'BAC', cores, ribo_dir, temp_dir)
     ribo_snap(euks, 'EUK', cores, ribo_dir, temp_dir)
 
@@ -367,14 +364,14 @@ def snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
 
     if comprehensive:
 
-        viruses.with_suffix('.fastq').write_text(annotated_to_fastq(viruses))
+        viruses_fastq.write_text(annotated_to_fastq(viruses))
 
         # output of this given to denovo assembly and RAPSearch
         extract_to_fast(fulllength_fastq,
                         fulllength_fastq.with_suffix('.fasta'),
                         fulllength_fastq.with_suffix('.uniq.f1.fasta'))
 
-    # TODO: Return Paths needed for assembly.py
+    return viruses_fastq, fulllength_fastq.with_suffix('.uniq.f1.fasta')
 
 def main():
 
