@@ -13,12 +13,13 @@ def fastq_seq_length(inputfile: Path) -> int:
             break
         return length
 
-def sequniq(matched, uniqvir, uniqunmatched, unmatched_add_vir):
+def sequniq(matched: Path, uniqvir: Path):
     '''Extracts the unique sequences from `matched`'''
 
-    sequniq_cmd = ('gt', 'sequniq', '-seqit', '-force', '-o', uniqvir, matched)
+    sequniq_cmd = ('gt', 'sequniq', '-seqit', '-force',
+                   '-o', str(uniqvir), str(matched))
 
-    subprocess.check_call(map(str, sequniq_cmd))
+    subprocess.check_call(sequniq_cmd)
 
 def abyss(unmatched_add_vir, length, contig_cutoff, cores, kmer,
           ignore_barcodes):
@@ -29,7 +30,7 @@ def abyss(unmatched_add_vir, length, contig_cutoff, cores, kmer,
     abyss_cmd = map(str, ('abyss_minimus.sh', unmatched_add_vir, length,
                           contig_cutoff, cores, kmer, ignore_barcodes))
 
-    subprocess.call(abyss_cmd)
+    subprocess.check_call(abyss_cmd)
 
 def assemble(matched_vir_fastq: Path, uniqunmatched: Path, workdir: Path,
              tempdir: Path, sample_fastq: Path, contig_cutoff: int,
@@ -61,7 +62,7 @@ def assemble(matched_vir_fastq: Path, uniqunmatched: Path, workdir: Path,
 
         fastq_to_fasta(matched_vir_fastq, matched_vir_fasta)
 
-        sequniq(matched_vir_fasta, matched_vir_uniq, uniqunmatched, addvir)
+        sequniq(matched_vir_fasta, matched_vir_uniq)
 
         concatenate(matched_vir_uniq, uniqunmatched, output=addvir)
 

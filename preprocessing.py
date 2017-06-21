@@ -19,11 +19,11 @@ ADAPTERS = {
                 'CTGTCTCTTATACACATCT')
 }
 
-ADAPTERS['nexsoltruseq'] = ADAPTERS['truseq'] + ADAPTERS['nextera']
-ADAPTERS['nexsolb'] = ADAPTERS['truseq'][:2] + ADAPTERS['nextera']
+ADAPTERS['nexsoltruseq'] = ADAPTERS['truseq'] + ADAPTERS['nextera']  # type: ignore
+ADAPTERS['nexsolb'] = ADAPTERS['truseq'][:2] + ADAPTERS['nextera']  # type: ignore
 
-def cutadapt(infile, outfile, adapter_set, fastq_type,
-             quality_cutoff, length_cutoff):
+def cutadapt(infile: Path, outfile: Path, adapter_set: str, fastq_type: str,
+             quality_cutoff: int, length_cutoff: int) -> None:
     '''Runs cutadapt on an input FASTQ file'''
 
     def format_adapters(flags, adapters):
@@ -64,9 +64,9 @@ def cutadapt(infile, outfile, adapter_set, fastq_type,
         # TODO: Error handling
         assert False
 
-    cmd = args + adapter_args + (infile, )
+    cmd = [str(arg) for arg in (args + adapter_args + (infile, ))]
 
-    log = subprocess.check_output(map(str, cmd), universal_newlines=True)
+    log = subprocess.check_output(cmd, universal_newlines=True)
 
     summary_log.write_text(log)
 
@@ -74,7 +74,7 @@ def cutadapt(infile, outfile, adapter_set, fastq_type,
     # sed 's/^$/N/g' call from the original SURPI is useless
 
 
-def crop_reads(infile, outfile, start, length):
+def crop_reads(infile: Path, outfile: Path, start: int, length: int) -> None:
     '''Crops reads found at infile for `length` reads beginning
     at the 1-indexed position `start`
 
@@ -91,7 +91,7 @@ def crop_reads(infile, outfile, start, length):
 
     outfile.write_text('\n'.join(lines))
 
-def dust(infile, dusted):
+def dust(infile: Path, dusted: Path) -> None:
     '''DUST mask infile and write it to `dusted`.fastq'''
 
     cmd = ('prinseq-lite.pl', '-fastq', infile, '-out_format', 3,
@@ -99,10 +99,11 @@ def dust(infile, dusted):
            '-out_bad', infile.with_suffix('.cutadapt.cropped.dusted.bad'),
            '-log', '-lc_method', 'dust', '-lc_threshold', 7)
 
-    subprocess.check_call(map(str, cmd))
+    subprocess.check_call([str(arg) for arg in cmd])
 
-def preprocess(infile, workdir, tempdir, adapter_set, fastq_type,
-               quality_cutoff, length_cutoff, crop_start, crop_length):
+def preprocess(infile: Path, workdir: Path, tempdir: Path, adapter_set: str,
+               fastq_type: str, quality_cutoff: int, length_cutoff: int,
+               crop_start: int, crop_length: int) -> Path:
     '''Entry point for preprocessing.py Preprocesses FASTQ file for
     use in the SURPI pipeline
 

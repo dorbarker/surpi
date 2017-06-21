@@ -4,59 +4,58 @@ import subprocess
 import re
 import tempfile
 from pathlib import Path
+from typing import List
 
 from Bio import SeqIO
 from utilities import concatenate
 from taxonomy_lookup import taxonomy_lookup, table_generator
 
-def run_rapsearch(query, output, database, cores, cutoff, fast, log):
+def run_rapsearch(query: Path, output: Path, database: Path, cores: int,
+                  cutoff: int, fast: bool, log: Path) -> None:
     '''Runs RAPSearch with some default arguments overriden.'''
 
     fast_mode = 'T' if fast else 'F'
 
     rapsearch_cmd = ('rapsearch', '-q', query, '-o', output, '-d', database,
-                     '-z', str(cores), '-e', cutoff, '-v', '1', '-b', '1',
+                     '-z', cores, '-e', cutoff, '-v', '1', '-b', '1',
                      '-t', 'N', '-a', fast_mode)
 
-    rapsearch_stdout = subprocess.check_output(rapsearch_cmd,
+    rapsearch_stdout = subprocess.check_output([str(x) for x in rapsearch_cmd],
                                                stderr=subprocess.STDOUT,
                                                universal_newlines=True)
 
     try:
-        with open(log, 'w') as logfile:
-            logfile.write(rapsearch_stdout)
+        log.write_text(rapsearch_stdout)
 
     except TypeError:
         pass
 
-def remove_octothorpe_lines(filepath):
+def remove_octothorpe_lines(filepath: Path) -> None:
     '''Deletes lines starting with the "#" character and
     writes back into the same file.
     '''
 
-    with open(filepath, 'r') as infile:
+    with filepath.open('r') as infile:
         lines = [l for l in infile.readlines() if l.startswith('#')]
 
-    with open(filepath, 'w') as outfile:
-        outfile.writelines(lines)
+    filepath.write_text('\n'.join(lines))
 
-def subseq(parent, query, output):
+def subseq(parent: Path, query: Path, output: Path) -> None:
     '''Runs external process seqtk subseq.
 
     No return value, but creates a file specified by `output`
     '''
 
-    subseq_cmd = ('seqtk', 'subseq', parent, query)
+    subseq_cmd = [str(x) for x in ('seqtk', 'subseq', parent, query)]
 
     result = subprocess.check_output(subseq_cmd, universal_newlines=True)
 
-    with open(output, 'w') as outfile:
-        outfile.write(result)
+    output.write_text(result)
 
-def fasta_to_seq(fastafile):
+def fasta_to_seq(fastafile: Path) -> List[str]:
     '''Reads a fasta file, and returns a list of headerless sequences'''
 
-    with open(fastafile, 'r') as fasta:
+    with fastafile.open('r') as fasta:
 
         recs = SeqIO.parse(fasta, 'fasta')
 
@@ -64,30 +63,31 @@ def fasta_to_seq(fastafile):
 
     return seqs
 
-def paste(a_list, b_list):
+def paste(a_list: List[str], b_list: List[str]) -> List[str]:
     '''Pastes two [str] together, line-by-line,
     tab separated and newline terminated
     '''
 
-    def merge(a_elem, b_elem):
+    def merge(a_elem: str, b_elem: str):
         '''Merges paired line elements'''
 
         return '{}\t{}\n'.format(a_elem.strip(), b_elem.strip())
 
     return [merge(a_elem, b_elem) for a_elem, b_elem in zip(a_list, b_list)]
 
-def filter_taxonomy(pattern, annotated):
+def filter_taxonomy(pattern: str, annotated: Path) -> List[str]:
     '''Filters the taxonomy annotation file based on a regular expression.
 
     Returns a list of matching patterns.
     '''
     comppat = re.compile(pattern)
 
-    with open(annotated, 'r') as annot:
+    with annotated.open('r') as annot:
 
         return [line for line in annot if re.search(comppat, line)]
 
-def coverage_map(snap_matched, annotated, evalue, cores):
+def coverage_map(snap_matched: Path, annotated: Path,
+                 evalue: str, cores: int) -> None:
     '''Removes "@" from taxonomy annotation
     and runs coverage_generator_bp.sh
     '''
@@ -101,15 +101,16 @@ def coverage_map(snap_matched, annotated, evalue, cores):
         inc_bar.seek(0)
         inc_bar_name = Path(inc_bar.name)
 
-        cov_gen = ('coverage_generator_bp.sh', snap_matched, inc_bar_name,
-                   evalue, cores, 10, 1, name)
+        cov_gen = [str(x) for x in ('coverage_generator_bp.sh', snap_matched,
+                                    inc_bar_name, evalue, cores, 10, 1, name)]
 
-        subprocess.check_call(map(str, cov_gen))
+        subprocess.check_call(cov_gen)
 
     inc_bar_name.unlink()
 
-def rapsearch_shared(rapsearch_query, rapsearch_output, rap_database,
-                     tax_db_dir, cores, cutoff, fast, log):
+def rapsearch_shared(rapsearch_query: Path, rapsearch_output: Path,
+                     rap_database: Path, tax_db_dir: Path, cores: int,
+                     cutoff: int, fast: bool, log: Path) -> None:
     '''Functions shared by all RAPSearch strategies.'''
 
     annotated = rapsearch_output.with_suffix('.annotated')
@@ -119,7 +120,8 @@ def rapsearch_shared(rapsearch_query, rapsearch_output, rap_database,
     taxonomy_lookup(infile=addseq, outfile=annotated, db_dir=tax_db_dir,
                     seq_type='nucl', file_type='blast')
 
-def rapsearch(query, output, database, cores, cutoff, fast, log):
+def rapsearch(query: Path, output: Path, database: Path, cores: int,
+              cutoff: int, fast: bool, log: Path) -> Path:
     '''Run RAPSearch and handle immediate processing of its output'''
 
     m8 = output.with_suffix(output.suffix + '.m8')
@@ -143,26 +145,28 @@ def rapsearch(query, output, database, cores, cutoff, fast, log):
 
     return addseq
 
-def vir_nr_difference(vir_annotated, nr_annotated):
+def vir_nr_difference(vir_annot: List[str], nr_annot: List[str]) -> List[str]:
     '''Returns the viral annotations not found in NR'''
 
-    def get_headers(annot):
+    def get_headers(annot: List[str]) -> List[str]:
         '''Extracts the headers from a taxomomy annotation'''
         return [line.split('\t')[0] for line in annot]
 
-    vir_headers = get_headers(vir_annotated)
-    nr_headers = get_headers(nr_annotated)
+    vir_headers = get_headers(vir_annot)
+    nr_headers = get_headers(nr_annot)
 
     headers_not_in_nr = set(vir_headers) - set(nr_headers)
 
-    not_in_nr = [annot for header, annot in zip(vir_headers, vir_annotated)
+    not_in_nr = [annot for header, annot in zip(vir_headers, vir_annot)
                  if header in headers_not_in_nr]
 
     return not_in_nr
 
-def rapsearch_viral(query, vir_output, nr_output, vir_database, nr_database,
-                    cores, vir_cutoff, nr_cutoff, fast, abyss_output,
-                    tax_db_dir, snap_match_annot, evalue):
+def rapsearch_viral(query: Path, vir_output: Path, nr_output: Path,
+                    vir_database: Path, nr_database: Path, vir_cutoff: int,
+                    nr_cutoff: int, fast: bool, abyss_output: Path,
+                    tax_db_dir: Path, snap_match_annot: Path,
+                    evalue: str, cores: int) -> None:
     '''Performs a RAPSearch first against a specialized viral database,
     and then against the NCBI NR database.
     '''
@@ -207,8 +211,9 @@ def rapsearch_viral(query, vir_output, nr_output, vir_database, nr_database,
 
     table_generator(not_in_nr_annot, 'RAP', 'N', 'Y', 'N', 'N')
 
-def rapsearch_nr(snap_unmatched, abyss_output, output, rap_database,
-                 tax_db_dir, cores, cutoff, fast, log):
+def rapsearch_nr(snap_unmatched: Path, abyss_output: Path, output: Path,
+                 rap_database: Path, tax_db_dir: Path, cutoff: int, fast: bool,
+                 log: Path, cores: int) -> None:
     '''Performs a RAPSearch against the NCBI NR database'''
 
     contigs_nt = abyss_output.parent / 'contigs_nt_snap_unmatched.fasta'

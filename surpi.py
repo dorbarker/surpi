@@ -15,6 +15,7 @@ from utilities import run_shell, user_msg, logtime
 from snap_to_nt import snap
 from map_host import host_subtract
 from assembly import assemble
+from rapsearch import rapsearch_viral, rapsearch_nr
 
 def arguments():
 
@@ -343,9 +344,12 @@ def validate_fastqs(fastq_file, logfile, mode):
                 sys.exit(65)
 
 @logtime('Total Runtime')
-def surpi(sample, workdir, temp_dir, fastq_type, quality_cutoff, length_cutoff,
-          adapter_set, crop_start, crop_length, edit_distance, snap_db_dir,
-          tax_db_dir, ribo_dir, cache_reset, comprehensive, cores):
+def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
+          quality_cutoff: int, length_cutoff: int, adapter_set: str,
+          crop_start: int, crop_length: int, edit_distance: int,
+          snap_db_dir: Path, tax_db_dir: Path, ribo_dir: Path, cache_reset,
+          contig_cutoff:int, abyss_kmer: int, ignore_barcodes: bool,
+          comprehensive: bool, cores: int):
     '''Master function for SURPI pipeline'''
 
     preprocessed = preprocess(sample, workdir, temp_dir, adapter_set,
@@ -355,8 +359,16 @@ def surpi(sample, workdir, temp_dir, fastq_type, quality_cutoff, length_cutoff,
     subtracted_fastq = host_subtract(preprocessed, snap_db_dir, edit_distance,
                                      temp_dir, cores)
 
-    snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
-         edit_distance, cache_reset, comprehensive, temp_dir)
+    viruses_fastq, uniqunmatched = snap(sample, workdir, snap_db_dir,
+                                        tax_db_dir, ribo_dir, cores,
+                                        edit_distance, cache_reset,
+                                        comprehensive, temp_dir)
+
+    assembled = assemble(viruses_fastq, uniqunmatched, workdir, temp_dir,
+                         sample, contig_cutoff, abyss_kmer, ignore_barcodes,
+                         cores)
+
+
 
 def main():
     pass
