@@ -371,7 +371,7 @@ def snap(sample, workdir, snap_db_dir, tax_db_dir, ribo_dir, cores,
                         fulllength_fastq.with_suffix('.fasta'),
                         fulllength_fastq.with_suffix('.uniq.f1.fasta'))
 
-    return viruses_fastq, fulllength_fastq.with_suffix('.uniq.f1.fasta')
+    return viruses, viruses_fastq, fulllength_fastq.with_suffix('.uniq.f1.fasta')
 
 def main():
 

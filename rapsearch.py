@@ -162,14 +162,16 @@ def vir_nr_difference(vir_annot: List[str], nr_annot: List[str]) -> List[str]:
 
     return not_in_nr
 
-def rapsearch_viral(query: Path, vir_output: Path, nr_output: Path,
-                    vir_database: Path, nr_database: Path, vir_cutoff: int,
-                    nr_cutoff: int, fast: bool, abyss_output: Path,
-                    tax_db_dir: Path, snap_match_annot: Path,
-                    evalue: str, cores: int) -> None:
+def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
+                    nr_database: Path, vir_cutoff: int, nr_cutoff: int,
+                    fast: bool, abyss_output: Path, tax_db_dir: Path,
+                    snap_match_annot: Path, evalue: str, cores: int) -> None:
     '''Performs a RAPSearch first against a specialized viral database,
     and then against the NCBI NR database.
     '''
+
+    vir_output = (workdir / query.stem).with_suffix('.rapsearch.vir')
+    nr_output = (workdir / query.stem).with_suffix('.rapsearch.nr')
 
     m8 = vir_output.with_suffix(vir_output.suffix  + '.m8')
     log = vir_output.with_suffix('.virlog')
@@ -211,14 +213,15 @@ def rapsearch_viral(query: Path, vir_output: Path, nr_output: Path,
 
     table_generator(not_in_nr_annot, 'RAP', 'N', 'Y', 'N', 'N')
 
-def rapsearch_nr(snap_unmatched: Path, abyss_output: Path, output: Path,
+def rapsearch_nr(snap_unmatched: Path, workdir: Path, abyss_output: Path,
                  rap_database: Path, tax_db_dir: Path, cutoff: int, fast: bool,
-                 log: Path, cores: int) -> None:
+                 cores: int) -> None:
     '''Performs a RAPSearch against the NCBI NR database'''
 
+    output = (workdir / snap_unmatched).with_suffix('.rapsearch.nr')
     contigs_nt = abyss_output.parent / 'contigs_nt_snap_unmatched.fasta'
     concatenate(snap_unmatched, abyss_output, output=contigs_nt)
-    log = output.with_suffix('.log')
+    log = output.with_suffix('.nrlog')
     virus_tax = output.with_suffix('.viruses.annotated')
     novir_tax = output.with_suffix('.novir.annotated')
 

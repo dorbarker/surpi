@@ -8,6 +8,7 @@ import subprocess
 from multiprocessing import cpu_count
 import sys
 from pathlib import Path
+from typing import Dict
 
 # surpi imports
 from preprocessing import preprocess
@@ -178,7 +179,7 @@ def arguments():
 
     return parser.parse_args()
 
-def ensure_fastq(inputfile, mode):
+def ensure_fastq(inputfile: Path, workdir: Path, mode: str) -> Path:
     '''If mode is "fasta", convert inputfile to fastq.
 
     In either case, guarantee that file extension is ".fastq"
@@ -186,31 +187,29 @@ def ensure_fastq(inputfile, mode):
 
     assert mode in ('fastq', 'fasta'), 'Mode must be "fasta" or "fastq"'
 
-    name, ext = os.path.splitext(inputfile)
-
-    fq_name = name + '.fastq'
+    fq_name = workdir / inputfile.with_suffix('.fastq').name
 
     if mode == 'fasta':
 
-        cmd = ('fasta_to_fastq', inputfile)
+        cmd = ('fasta_to_fastq', str(inputfile))
 
-        fastq = subprocess.check_output(cmd, universal_newlines=True)
-
-        with open(fq_name, 'w') as f:
-            f.write(fastq)
+        fq_name.write_text(subprocess.check_output(cmd,
+                                                   universal_newlines=True))
 
     else:
 
-        os.symlink(inputfile, fq_name)
+        fq_name.symlink_to(inputfile)
 
-def free_memory(cache_reset):
+    return fq_name
+
+def free_memory(cache_reset: int):
 
     freemem = float(run_shell("free -g | awk 'NR==2{print $4}'"))
 
     if freemem < cache_reset:
         run_shell('dropcache')
 
-def get_memory_limit():
+def get_memory_limit() -> int:
     '''Return a usable memory limit in GB based on system RAM'''
 
     cmd = ('grep', 'MemTotal', '/proc/meminfo')
@@ -233,7 +232,7 @@ def get_memory_limit():
 
     return memory_limit
 
-def check_program_versions():
+def check_program_versions() -> Dict[str, str]:
     '''Return the versions of each external dependency as a dict
 
     {program: version}
@@ -257,7 +256,7 @@ def check_program_versions():
 
     if malformed:
 
-        print('The following dependencies are missing:', file=sys.stderr)
+        user_msg('The following dependencies are missing:')
 
         for mal in malformed:
             user_msg(mal)
@@ -266,6 +265,7 @@ def check_program_versions():
 
     return versions
 
+@logtime('SNAP database validation')
 def verify_snap_databases(*db_dirs):
     '''Verifies SNAP databases.
 
@@ -283,38 +283,41 @@ def verify_snap_databases(*db_dirs):
 
     if malformed:
 
-        print('The following databases are malformed:', file=sys.stderr)
+        user_msg('The following databases are malformed:')
 
         for mal in malformed:
-            print(mal, file=sys.stderr)
+            user_msg(mal)
 
         sys.exit(65)
 
     else:
-        print('SNAP Databases are OK.', file=sys.stderr)
+        user_msg('SNAP Databases are OK.')
 
-def verify_rapsearch_databases(viral, nr):
+@logtime('RAPSearch database validation')
+def verify_rapsearch_databases(viral: Path, nr: Path) -> None:
     '''Verifies RAPSearch databases.
 
     If databases are malformed, print which are broken at exit with code 65.
     '''
 
-    def verify_rapsearch_database(db):
-        return os.access(db, os.F_OK) and os.access(db + '.info', os.F_OK)
+    def verify_rapsearch_database(db: Path) -> bool:
+        '''Tests that rapsearch database exists'''
+        return db.is_file() and db.with_suffix('.info').is_file()
 
     malformed = [db for db in (viral, nr) if not verify_rapsearch_database(db)]
 
     if malformed:
-        print('The following databases are malfored:', file=sys.stderr)
+        user_msg('The following databases are malformed:')
 
         for mal in malformed:
-            print(mal, file=sys.stderr)
+            user_msg(mal)
 
         sys.exit(65)
 
     else:
-        print('RAPSearch databases are OK.', file=sys.stderr)
+        user_msg('RAPSearch databases are OK.')
 
+@logtime('Fastq validation')
 def validate_fastqs(fastq_file, logfile, mode):
 
     assert mode in range(4), 'Invalid fastq validation mode'
@@ -330,7 +333,8 @@ def validate_fastqs(fastq_file, logfile, mode):
     if mode:
 
         try:
-            result = run_shell(modes[mode].format(fastq_file, logfile))
+            cmd = modes[mode]
+            result = run_shell(cmd.format(fastq_file, logfile))
 
         except subprocess.CalledProcessError:
             msg = '{} appears to be invalid. Check {} for details'
@@ -343,13 +347,30 @@ def validate_fastqs(fastq_file, logfile, mode):
             else:
                 sys.exit(65)
 
+@logtime('Sample and DB Validation')
+def validation(inputfile: Path, workdir: Path, mode: str, fastq_log: Path,
+               validation_mode: int, snap_db_dir: Path,
+               rapsearch_vir_db: Path, rapsearch_nr_db: Path):
+
+    sample = ensure_fastq(inputfile, workdir, mode)
+
+    validate_fastqs(sample, fastq_log, validation_mode)
+
+    verify_snap_databases(*snap_db_dir.glob('*'))
+
+    verify_rapsearch_databases(rapsearch_vir_db, rapsearch_nr_db)
+
+    return sample
+
 @logtime('Total Runtime')
 def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
           quality_cutoff: int, length_cutoff: int, adapter_set: str,
           crop_start: int, crop_length: int, edit_distance: int,
           snap_db_dir: Path, tax_db_dir: Path, ribo_dir: Path, cache_reset,
           contig_cutoff:int, abyss_kmer: int, ignore_barcodes: bool,
-          comprehensive: bool, cores: int):
+          comprehensive: bool, rapsearch_mode: str, rapsearch_vir_db: Path,
+          rapsearch_nr_db: Path, vir_cutoff: int, nr_cutoff: int,
+          fast: bool, evalue: str, cores: int):
     '''Master function for SURPI pipeline'''
 
     preprocessed = preprocess(sample, workdir, temp_dir, adapter_set,
@@ -359,22 +380,27 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
     subtracted_fastq = host_subtract(preprocessed, snap_db_dir, edit_distance,
                                      temp_dir, cores)
 
-    viruses_fastq, uniqunmatched = snap(sample, workdir, snap_db_dir,
-                                        tax_db_dir, ribo_dir, cores,
-                                        edit_distance, cache_reset,
-                                        comprehensive, temp_dir)
+    viruses, viruses_fastq, uniqunmatched = snap(sample, workdir, snap_db_dir,
+                                                 tax_db_dir, ribo_dir, cores,
+                                                 edit_distance, cache_reset,
+                                                 comprehensive, temp_dir)
 
     assembled = assemble(viruses_fastq, uniqunmatched, workdir, temp_dir,
                          sample, contig_cutoff, abyss_kmer, ignore_barcodes,
                          cores)
 
-
+    if rapsearch_mode == 'viral':
+        rapsearch_viral(uniqunmatched, workdir, rapsearch_vir_db,
+                        rapsearch_nr_db, vir_cutoff, nr_cutoff, fast,
+                        assembled, tax_db_dir, viruses, evalue, cores)
+    else:
+        rapsearch_nr(uniqunmatched, workdir, assembled, rapsearch_nr_db,
+                     tax_db_dir, nr_cutoff, fast, cores)
 
 def main():
     pass
     #args = arguments()
     # TODO add taxonomy DB verification
-    # TODO handle slave instances (line 633-637, 687-703 in original)
     # TODO verification mode
 
 
