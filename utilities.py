@@ -103,3 +103,10 @@ def sam_to_fasta(samfile: Path, fastafile: Path) -> None:
 
             fasta_line = '>{}\n{}\n'.format(split_line[0], split_line[9])
             fasta.write(fasta_line)
+
+def pigz(src: Path, dst: Path) -> None:
+    '''Decompresses src with pigz, preserving the original file'''
+
+    pigz_cmd = ('pigz', '-d', '-c', '-k', str(src))
+    decomp = subprocess.check_output(pigz_cmd, universal_newlines=True)
+    dst.write_text(decomp)

@@ -20,6 +20,7 @@ import sys
 from pathlib import Path
 import subprocess
 import os
+from utilities import user_msg
 
 def arguments():
 
@@ -30,10 +31,6 @@ def arguments():
                         help='Directory containing NCBI data')
 
     return parser.parse_args()
-
-def user_msg(*args):
-
-    print(*args, file=sys.stderr)
 
 def unzip_downloads(db_dir):
 
@@ -51,7 +48,7 @@ def verify_files(db_dir):
              'prot.accession2taxid', 'nt.gz', 'nr.gz', 'taxdump.tar.gz')
 
     if not all((db_dir / f).exists() for f in files):
-        user_msg('Did not find all files. Quitting...', file=sys.stderr)
+        user_msg('Did not find all files. Quitting...')
         sys.exit(1)
 
 def trim_names(db_dir):
@@ -153,19 +150,23 @@ def create_dbs(db_dir):
 
     acc_taxid(db_dir / 'prot.accession2taxid', db_dir / 'acc_taxid_prot.db')
 
+def create_taxonomy_database(db_directory):
+
+    verify_files(db_directory)
+
+    unzip_downloads(db_directory)
+
+    trim_names(db_directory)
+
+    create_dbs(db_directory)
+
+    tidy(db_directory)
+
 def main():
 
     args = arguments()
 
-    verify_files(args.db_directory)
-
-    unzip_downloads(args.db_directory)
-
-    trim_names(args.db_directory)
-
-    create_dbs(args.db_directory)
-
-    tidy(args.db_directory)
+    create_taxonomy_database(args.db_directory)
 
 if __name__ == '__main__':
     main()
