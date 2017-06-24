@@ -32,7 +32,7 @@ def arguments():
 
     return parser.parse_args()
 
-def unzip_downloads(db_dir):
+def unzip_downloads(db_dir: Path) -> None:
 
     tar = ('tar', 'xzf', str(db_dir / 'taxdump.tar.gz'), '-C', str(db_dir))
     subprocess.call(tar)
@@ -41,7 +41,7 @@ def unzip_downloads(db_dir):
         cmd = ('pigz -dck {} > {}'.format(gz, db_dir / gz.with_suffix('').name))
         subprocess.call(cmd, shell=True)
 
-def verify_files(db_dir):
+def verify_files(db_dir: Path) -> None:
 
     files = ('nucl_est.accession2taxid.gz', 'nucl_wgs.accession2taxid.gz',
              'nucl_gb.accession2taxid.gz', 'nucl_gss.accession2taxid.gz',
@@ -51,7 +51,7 @@ def verify_files(db_dir):
         user_msg('Did not find all files. Quitting...')
         sys.exit(1)
 
-def trim_names(db_dir):
+def trim_names(db_dir: Path) -> None:
 
     names = db_dir / 'names.dmp'
     scinames = db_dir / 'names_scientificname.dmp'
@@ -61,24 +61,23 @@ def trim_names(db_dir):
     scinames_lines = subprocess.check_output(grep_scinames,
                                              universal_newlines=True)
 
-    with open(str(scinames), 'w') as f:
-        f.write(scinames_lines)
+    scinames.write_text(scinames_lines)
 
-def tidy(db_dir):
+def tidy(db_dir: Path) -> None:
 
-    for i in db_dir.glob('*.dmp'):
-        os.remove(str(i))
+    for garbage in db_dir.glob('*.dmp'):
+        garbage.unlink()
 
-    os.remove('gc.prt')
-    os.remove('readme.txt')
+    (db_dir / 'gc.prt').unlink()
+    (db_dir / 'readme.txt').unlink()
 
-def create_dbs(db_dir):
+def create_dbs(db_dir: Path):
 
-    def acc_taxid(path, db_path):
+    def acc_taxid(path: Path, db_path: Path):
 
         c = sqlite3.connect(str(db_path))
 
-        with open(str(path), 'r') as f:
+        with path.open('r') as f:
             for line in f:
                 if line.startswith('accession'):
                     continue
@@ -90,6 +89,9 @@ def create_dbs(db_dir):
         c.commit()
         c.close()
 
+    names_scientificname = db_dir / 'names_scientificname.dmp'
+    nodes = db_dir / 'nodes.dmp'
+
     # Create names_nodes_scientific.db
     user_msg("Creating names_nodes_scientific.db...")
     conn = sqlite3.connect(str(db_dir / 'names_nodes_scientific.db'))
@@ -98,7 +100,7 @@ def create_dbs(db_dir):
                 taxid INTEGER PRIMARY KEY,
                 name TEXT)''')
 
-    with open(str(db_dir / 'names_scientificname.dmp'), 'r') as map_file:
+    with names_scientificname.open('r') as map_file:
         for line in map_file:
             line = line.split("|")
             taxid = line[0].strip()
@@ -112,7 +114,7 @@ def create_dbs(db_dir):
                 parent_taxid INTEGER,
                 rank TEXT)''')
 
-    with open(str(db_dir / 'nodes.dmp'), 'r') as map_file:
+    with nodes.open('r') as map_file:
         for line in map_file:
             line = line.split("|")
             taxid = line[0].strip()
@@ -150,7 +152,7 @@ def create_dbs(db_dir):
 
     acc_taxid(db_dir / 'prot.accession2taxid', db_dir / 'acc_taxid_prot.db')
 
-def create_taxonomy_database(db_directory):
+def create_taxonomy_database(db_directory: Path):
 
     verify_files(db_directory)
 
