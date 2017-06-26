@@ -38,14 +38,24 @@ def unzip_downloads(db_dir: Path) -> None:
     subprocess.call(tar)
 
     for gz in db_dir.glob('*.gz'):
-        cmd = ('pigz -dck {} > {}'.format(gz, db_dir / gz.with_suffix('').name))
+
+        output = gz.with_suffix('')
+
+        if gz.with_suffix('').exists():
+            user_msg('{} already exists - skipping'.format(output))
+            continue
+
+        user_msg('Decompressing {}'.format(gz))
+
+        cmd = ('pigz -dck {} > {}'.format(gz, output))
         subprocess.call(cmd, shell=True)
 
 def verify_files(db_dir: Path) -> None:
+    '''Verifies that all taxonomy files have been downloaded'''
 
     files = ('nucl_est.accession2taxid.gz', 'nucl_wgs.accession2taxid.gz',
              'nucl_gb.accession2taxid.gz', 'nucl_gss.accession2taxid.gz',
-             'prot.accession2taxid', 'nt.gz', 'nr.gz', 'taxdump.tar.gz')
+             'prot.accession2taxid.gz', 'taxdump.tar.gz')
 
     if not all((db_dir / f).exists() for f in files):
         user_msg('Did not find all files. Quitting...')
@@ -64,6 +74,7 @@ def trim_names(db_dir: Path) -> None:
     scinames.write_text(scinames_lines)
 
 def tidy(db_dir: Path) -> None:
+    '''Remove unnecessary files'''
 
     for garbage in db_dir.glob('*.dmp'):
         garbage.unlink()
@@ -73,7 +84,7 @@ def tidy(db_dir: Path) -> None:
 
 def create_dbs(db_dir: Path):
 
-    def acc_taxid(path: Path, db_path: Path):
+    def acc_taxid(path: Path, db_path: Path) -> None:
 
         c = sqlite3.connect(str(db_path))
 

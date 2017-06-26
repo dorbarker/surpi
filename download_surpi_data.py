@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 
+import sys
 import argparse
 import subprocess
+import hashlib
 from math import ceil
+from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 from pathlib import Path
 from typing import Tuple, Any
@@ -28,9 +31,9 @@ def arguments():
                               [curated_current date]]')
 
     parser.add_argument('reference',
-                        required=True,
                         type=Path,
                         help='Path for SURPI reference data')
+
     parser.add_argument('--overwrite',
                         action='store_true',
                         help='Overwrite existing data [off]')
@@ -103,15 +106,39 @@ def download_curated(dest: Path):
 
 
 def md5check(directory: Path):
-    # TODO: Fix issues or move to hashlib
+    '''Checks that each downloaded file matches its expected MD5 sum'''
+
+    def chunkfile(size, datafile):
+        '''Lazily read a file and yield `size` bytes at a time'''
+
+        while True:
+            data = datafile.read(size)
+            if not data:
+                break
+            yield data
+
+    success = True
     md5s = directory.glob('*.md5')
 
     for md5 in md5s:
-        cmd = ('md5sum', '-c', '--status', str(md5))
 
-        # if hashes don't match
-        if subprocess.call(cmd):
-            user_msg('Checksum of {} failed'.format(md5))
+        expected = md5.read_text().strip().split()[0]
+
+        with md5.with_suffix('').open('rb') as datafile:
+
+            md5hash = hashlib.md5()
+
+            for chunk in chunkfile(4096, datafile):
+                md5hash.update(chunk)
+
+            if not md5hash.hexdigest() == expected:
+                user_msg('MD5 sum of {} failed'.format(md5))
+                success = False
+
+    # Exit only after all MD5 sums have been checked, so that the user
+    # can see and fix all errors before re-running
+    if not success:
+        sys.exit(1)
 
 def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
@@ -157,7 +184,6 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
         subprocess.check_call([str(arg) for arg in splitfasta])
 
-        # TODO: Maybe parallelize this
         for chunk in nt.parent.glob('*.[0-9]*'):
 
             dest = destdir / (prefix + nt.name + chunk.suffix)
@@ -175,9 +201,18 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
             snap_index(chunk, dest, ('',))
 
+    today = '{}-{}-{}'.format(*date.today().timetuple()[:3])
+
+    tax, rap, fast, comp, ribo = setup_reference_dirs(reference)
+
     nr = ncbi / 'nr'
     nt = ncbi / 'nt'
-    tax, rap, fast, comp, ribo = setup_reference_dirs(reference)
+
+    if not nr.exists():
+        pigz(nr.with_suffix('.gz'), nr)
+
+    if not nt.exists():
+        pigz(nt.with_suffix('.gz'), nt)
 
     # Create taxonomy databases
     create_taxonomy_database(ncbi)
@@ -186,14 +221,7 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
         tax_dst = reference / tax_src.name
         tax_dst.symlink_to(tax_src)
 
-    if not nr.exists():
-        pigz(nr.with_suffix('.gz'), nr)
-
-    if not nt.exists():
-        pigz(nt.with_suffix('.gz'), nt)
-
-    prerapsearch(nr, 'rapsebarch_nr', rap)
-
+    # SNAP indices
     for gz_file in curated.glob('*.gz'):
 
         decomp = gz_file.with_suffix('')
@@ -201,7 +229,8 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
         pigz(gz_file, decomp)
 
         if decomp.name.startswith('rapsearch'):
-            prerapsearch(decomp, 'rapsearch_viral', rap)
+
+            viral = decomp  # processing happens below
 
         elif decomp.name.startswith('hg19'):
 
@@ -218,7 +247,12 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
         else:
             snap_index(decomp, ribo, ('',))
 
-    today = '{}-{}-{}'.format(*date.today().timetuple()[:3])
+    # Run prerapsearch procs concurrently,
+    # as they're long-running and relatively low-memory
+    with ProcessPoolExecutor(max_workers=2) as executor:
+
+        executor.submit(prerapsearch, nr, 'rapsearch_nr', rap)
+        executor.submit(prerapsearch, viral, 'rapsearch_viral', rap)
 
     snap_index_nt(nt, comp, today, 20)
 
