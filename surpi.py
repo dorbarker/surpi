@@ -12,7 +12,7 @@ from typing import Dict
 
 # surpi imports
 from preprocessing import preprocess
-from utilities import run_shell, user_msg, logtime
+from utilities import run_shell, user_msg, logtime, pigz
 from snap_to_nt import snap
 from map_host import host_subtract
 from assembly import assemble
@@ -75,11 +75,12 @@ def arguments():
 
     parser.add_argument('--crop-length',
                         type=int,
-                        default=10,
+                        default=75,
                         help='Prior to SNP alignment, length to crop after start position [75]')
 
     parser.add_argument('--quality-cutoff',
                         type=int,
+                        default=18,
                         help='Quality cutoff passed to cutadapt\' -q parameter [18]')
 
     parser.add_argument('--edit-distance',
@@ -179,26 +180,38 @@ def arguments():
 
     return parser.parse_args()
 
-def ensure_fastq(inputfile: Path, workdir: Path, mode: str) -> Path:
+def ensure_fastq(inputfile: Path, workdir: Path) -> Path:
     '''If mode is "fasta", convert inputfile to fastq.
 
     In either case, guarantee that file extension is ".fastq"
     '''
 
-    assert mode in ('fastq', 'fasta'), 'Mode must be "fasta" or "fastq"'
 
-    fq_name = workdir / inputfile.with_suffix('.fastq').name
+    # FASTA
+    if inputfile.suffix in ('.fasta', '.fas'):
 
-    if mode == 'fasta':
+        fq_name = workdir / inputfile.with_suffix('.fastq').name
 
         cmd = ('fasta_to_fastq', str(inputfile))
 
         fq_name.write_text(subprocess.check_output(cmd,
                                                    universal_newlines=True))
+    # Compressed FASTQ
+    elif inputfile.suffix == '.gz':
 
+        fq_name = workdir / inputfile.with_suffix('').name
+
+        pigz(inputfile, fq_name)
+
+    # Uncompressed FASTQ
     else:
 
-        fq_name.symlink_to(inputfile)
+        try:
+            fq_name.symlink_to(inputfile)
+
+        except FileExistsError:
+            fq_name.unlink()
+            fq_name.symlink_to(inputfile)
 
     return fq_name
 
@@ -274,10 +287,11 @@ def verify_snap_databases(*db_dirs):
 
     def verify_database(db_dir):
 
-        db_dir_path = os.path.abspath(db_dir)
-        genomes_glob = os.path.join(db_dir_path, '*', 'Genome')
-
-        return all(os.access(f, os.F_OK) for f in glob.glob(genomes_glob))
+#        db_dir_path = os.path.abspath(db_dir)
+#        genomes_glob = os.path.join(db_dir_path, '*', 'Genome')
+        db_dir_path = db_dir.resolve()
+        return db_dir_path.glob('*/Genome')
+        #return all(os.access(f, os.F_OK) for f in glob.glob(genomes_glob))
 
     malformed = [db_dir for db_dir in db_dirs if not verify_database(db_dir)]
 
@@ -348,11 +362,11 @@ def validate_fastqs(fastq_file, logfile, mode):
                 sys.exit(65)
 
 @logtime('Sample and DB Validation')
-def validation(inputfile: Path, workdir: Path, mode: str, fastq_log: Path,
+def validation(inputfile: Path, workdir: Path, fastq_log: Path,
                validation_mode: int, snap_db_dir: Path,
                rapsearch_vir_db: Path, rapsearch_nr_db: Path):
 
-    sample = ensure_fastq(inputfile, workdir, mode)
+    sample = ensure_fastq(inputfile, workdir)
 
     validate_fastqs(sample, fastq_log, validation_mode)
 
@@ -367,7 +381,7 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
           quality_cutoff: int, length_cutoff: int, adapter_set: str,
           crop_start: int, crop_length: int, edit_distance: int,
           snap_db_dir: Path, tax_db_dir: Path, ribo_dir: Path, cache_reset,
-          contig_cutoff:int, abyss_kmer: int, ignore_barcodes: bool,
+          abyss_kmer: int, ignore_barcodes: bool,
           comprehensive: bool, rapsearch_mode: str, rapsearch_vir_db: Path,
           rapsearch_nr_db: Path, vir_cutoff: int, nr_cutoff: int,
           fast: bool, evalue: str, cores: int):
@@ -386,8 +400,7 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
                                                  comprehensive, temp_dir)
 
     assembled = assemble(viruses_fastq, uniqunmatched, workdir, temp_dir,
-                         sample, contig_cutoff, abyss_kmer, ignore_barcodes,
-                         cores)
+                         sample, abyss_kmer, ignore_barcodes, cores)
 
     if rapsearch_mode == 'viral':
         rapsearch_viral(uniqunmatched, workdir, rapsearch_vir_db,

@@ -33,7 +33,7 @@ def cutadapt(infile: Path, outfile: Path, adapter_set: str, fastq_type: str,
     # Not including keep short reads because in the original SURPI script,
     # short reads are *never* kept
 
-    qual = 33 if fastq_type == 'S' else 64
+    qual = 33 if fastq_type == 'sanger' else 64
     adapter_info = outfile.with_suffix('.adapterinfo')
     summary_log = outfile.with_suffix('.summary.log')
 

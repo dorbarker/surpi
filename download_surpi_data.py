@@ -140,27 +140,34 @@ def md5check(directory: Path):
     if not success:
         sys.exit(1)
 
+def prerapsearch(database: Path, name: str, output: Path) -> None:
+
+    cmd = ('prerapsearch', '-d', str(database), '-n', str(name))
+    subprocess.check_call(cmd)
+
+    info = Path(name).with_suffix('.info')
+    (output / name).symlink_to(name)
+    (output / info).symlink_to(info)
+
 def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
-    def prerapsearch(database: Path, name: str, output: Path) -> None:
 
-        cmd = ('prerapsearch', '-d', str(database), '-n', str(name))
-        subprocess.check_call(cmd)
-
-        info = Path(name).with_suffix('.info')
-        (output / name).symlink_to(name)
-        (output / info).symlink_to(info)
-
-    def snap_index(fasta: Path, dest: Path, extra_args: Tuple[Any, ...]) -> None:
+    def snap_index(fasta: Path, dest_dir: Path, extra_args: Tuple[Any, ...]) -> None:
 
         tempout = fasta.with_suffix(fasta.suffix + '.snap_index')
+        dest = dest_dir / tempout.name
+
         cmd = ['snap-aligner', 'index', fasta, tempout]
 
         cmd.extend(extra_args)
 
         subprocess.check_call([str(arg) for arg in cmd if arg])
 
-        dest.symlink_to(tempout)
+        try:
+            dest.symlink_to(tempout)
+        except FileExistsError:
+            dest.unlink()
+            dest.symlink_to(tempout)
 
     def setup_reference_dirs(reference: Path):
         subdirs = [reference / sub for sub in ('taxonomy', 'rapsearch',
@@ -180,7 +187,7 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
         output = nt.with_name('{}_{}'.format(prefix, nt.name))
 
-        splitfasta = ('gt', 'splitfasta', '-numfiles', n_chunks, nt)
+        splitfasta = ('gt', 'splitfasta', '-force', '-numfiles', n_chunks, nt)
 
         subprocess.check_call([str(arg) for arg in splitfasta])
 
@@ -188,18 +195,18 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
             dest = destdir / (prefix + nt.name + chunk.suffix)
 
-            with chunk.open('r') as infile:
-                records = list(SeqIO.parse(infile, 'fasta'))
+      #      with chunk.open('r') as infile:
+       #         records = list(SeqIO.parse(infile, 'fasta'))
 
-            with chunk.open('w') as outfile:
+#            with chunk.open('w') as outfile:
 
-                for rec in records:
-                    rec.description = ''
-                    rec.id = rec.id[:rec.id.rfind('.')]
-                    rec.seq = Seq(rec.seq.translate(tr))
-                    SeqIO.write(rec, outfile, 'fasta')
+ #               for rec in records:
+  #                  rec.description = ''
+   #                 rec.id = rec.id[:rec.id.rfind('.')]
+    #                rec.seq = Seq(str(rec.seq).translate(tr))
+     #               SeqIO.write(rec, outfile, 'fasta')
 
-            snap_index(chunk, dest, ('',))
+            snap_index(chunk, destdir, ('-s', 22, '-locationSize', 5))
 
     today = '{}-{}-{}'.format(*date.today().timetuple()[:3])
 
@@ -215,18 +222,19 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
         pigz(nt.with_suffix('.gz'), nt)
 
     # Create taxonomy databases
-    create_taxonomy_database(ncbi)
+    #create_taxonomy_database(ncbi)
 
-    for tax_src in ncbi.glob('*.db'):
-        tax_dst = reference / tax_src.name
-        tax_dst.symlink_to(tax_src)
+    #for tax_src in ncbi.glob('*.db'):
+    #    tax_dst = reference / tax_src.name
+    #    tax_dst.symlink_to(tax_src)
 
     # SNAP indices
     for gz_file in curated.glob('*.gz'):
-
+        break  # remove
         decomp = gz_file.with_suffix('')
 
-        pigz(gz_file, decomp)
+        if not decomp.exists():
+            pigz(gz_file, decomp)
 
         if decomp.name.startswith('rapsearch'):
 
@@ -234,11 +242,12 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
         elif decomp.name.startswith('hg19'):
 
-            snap_index(decomp, reference, ('-hg19',))
+            snap_index(decomp, reference, ('-s', 22, '-hg19'))
 
         elif decomp.name.startswith('Bacterial_Refseq'):
 
-            snap_index(decomp, fast, ('-s', 16))
+            # Peak RAM usage ~47 GB
+            snap_index(decomp, fast, ('-s', 20, '-locationSize', 5))
 
         elif decomp.name.startswith('viruses'):
 
@@ -249,24 +258,24 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
     # Run prerapsearch procs concurrently,
     # as they're long-running and relatively low-memory
-    with ProcessPoolExecutor(max_workers=2) as executor:
+    #with ProcessPoolExecutor(max_workers=2) as executor:
 
-        executor.submit(prerapsearch, nr, 'rapsearch_nr', rap)
-        executor.submit(prerapsearch, viral, 'rapsearch_viral', rap)
+     #   executor.submit(prerapsearch, nr, 'rapsearch_nr', rap)
+      #  executor.submit(prerapsearch, viral, 'rapsearch_viral', rap)
 
-    snap_index_nt(nt, comp, today, 20)
+    snap_index_nt(nt, comp, today, 120)
 
 def main():
 
     args = arguments()
 
     # NCBI data
-    download_ncbi(args.ncbi, args.overwrite)
-    md5check(args.ncbi)
+    #download_ncbi(args.ncbi, args.overwrite)
+    #md5check(args.ncbi)
 
     # Chiu lab data
-    download_curated(args.curated)
-    md5check(args.curated)
+    #download_curated(args.curated)
+    #md5check(args.curated)
 
     organize_data(args.ncbi, args.curated, args.reference)
 

@@ -33,7 +33,7 @@ def abyss(unmatched_add_vir, length, contig_cutoff, cores, kmer,
     subprocess.check_call(abyss_cmd)
 
 def assemble(matched_vir_fastq: Path, uniqunmatched: Path, workdir: Path,
-             tempdir: Path, sample_fastq: Path, contig_cutoff: int,
+             tempdir: Path, sample_fastq: Path,
              kmer: int, ignore_barcodes: bool, cores: int) -> Path:
 
     # matched_vir_fastq is temporary
@@ -44,6 +44,7 @@ def assemble(matched_vir_fastq: Path, uniqunmatched: Path, workdir: Path,
     # sample_fastq_length comes externally?
 
     sample_fq_length = fastq_seq_length(sample_fastq)
+    contig_cutoff = int(1.75 * sample_fq_length)
 
     addvir = (workdir / matched_vir_fastq.stem).with_suffix('.addVir.fasta')
 
