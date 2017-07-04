@@ -172,7 +172,7 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
     def setup_reference_dirs(reference: Path):
         subdirs = [reference / sub for sub in ('taxonomy', 'rapsearch',
                                                'fast_snap', 'comp_snap',
-                                               'riboclean_snap')]
+                                               'riboclean_snap', 'host_snap')]
 
         for subdir in subdirs:
             if not subdir.exists():
@@ -210,7 +210,7 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
     today = '{}-{}-{}'.format(*date.today().timetuple()[:3])
 
-    tax, rap, fast, comp, ribo = setup_reference_dirs(reference)
+    tax, rap, fast, comp, ribo, host = setup_reference_dirs(reference)
 
     nr = ncbi / 'nr'
     nt = ncbi / 'nt'

@@ -8,7 +8,7 @@ from utilities import user_msg, logtime, annotated_to_fastq
 def vmtouch(snap_db: Path) -> bool:
     '''Calls vmtouch to check if the SNAP database is loaded into memory'''
 
-    cmd = ('vmtouch', '-m500G', str(snap_db))
+    cmd = ('vmtouch', '-f', '-m500G', str(snap_db))
     output = subprocess.check_output(cmd, universal_newlines=True).splitlines()
 
     for line in output:
@@ -54,10 +54,11 @@ def host_subtract(preprocessed: Path, snap_db_dir: Path, edit_distance: int,
                         '-d', edit_distance, '-n', '25', '-F', 'u',
                         '-map', pre)
 
-        subprocess.call(list(map(str, subtract_cmd)))
+        subprocess.call([str(arg) for arg in subtract_cmd if arg])
         # end subtract()
 
-    subtracted_fastq = preprocessed.with_suffix('.fastq')
+    subtracted_fastq = preprocessed.with_suffix('')\
+                                   .with_suffix('.unmatched.fastq')
 
     to_subtract = preprocessed
 
@@ -65,7 +66,7 @@ def host_subtract(preprocessed: Path, snap_db_dir: Path, edit_distance: int,
 
         for i, snap_db in enumerate(snap_db_dir.glob('*')):
 
-            temp_output = Path(ephemeral) / str(i)
+            temp_output = Path(ephemeral) / '{}.sam'.format(str(i))
 
             snap_cache_option = set_snap_cache_option(snap_db)
 

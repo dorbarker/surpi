@@ -77,7 +77,7 @@ def annotated_to_fastq(annotated: Path) -> str:
 
     fastq_lines = (fastq(line) for line in lines if not line.startswith('@'))
 
-    return '\n'.join(fastq_lines)
+    return '\n'.join(filter(None, fastq_lines))
 
 def fastq_to_fasta(fastq_path: Path, fasta_path: Path) -> None:
     '''Reads a FASTQ file located at fastq_path and writes
