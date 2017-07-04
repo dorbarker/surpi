@@ -4,29 +4,12 @@
 import argparse
 import sqlite3 as sql
 import csv
+import subprocess
 
-def arguments():
-    '''Command line argument parser for gather arguments when called
-    externally.
-    '''
+from pathlib import Path
+from typing import List, Dict
 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument('input_file', help='blast_file/sam_file')
-
-    parser.add_argument('output_file', help='blast_file/sam_file')
-
-    parser.add_argument('file_type', choices=('blast', 'sam'),
-                        help='File format')
-
-    parser.add_argument('seq_type', choices=('nucl', 'prot'),
-                        help='Sequence type')
-
-    parser.add_argument('tax_dir', help='Taxonomy reference directory')
-
-    return parser.parse_args()
-
-def get_accession_numbers(path, file_type):
+def get_accession_numbers(path: Path, file_type: str) -> List[str]:
     '''Extracts a non-redundant sorted list of accessions from
     the SAM or BLAST file located at path.
     '''
@@ -34,7 +17,7 @@ def get_accession_numbers(path, file_type):
     acc_column = 2 if file_type == 'sam' else 1
     accs = set()
 
-    with open(path, 'r') as seq_file:
+    with path.open('r') as seq_file:
         for line in seq_file:
             try:
                 acc = line.split()[acc_column]
@@ -44,7 +27,7 @@ def get_accession_numbers(path, file_type):
 
     return sorted(accs)
 
-def query_dbs(db_dir, seq_type, accs):
+def query_dbs(db_dir: Path, seq_type: str, accs: List[str]) -> Dict[str, Dict[str, str]]:
     '''Queries NCBI Taxonomy databases by accession number.
 
     All databases must be co-located in db_dir.
@@ -58,7 +41,7 @@ def query_dbs(db_dir, seq_type, accs):
     names_query = 'SELECT name FROM names WHERE taxid = ?'
     nodes_query = 'SELECT * FROM nodes WHERE taxid = ?'
 
-    taxonomy = {}
+    taxonomy = {}  # type: Dict[str, Dict]
 
     with acc_txid_db, names_db:
 
@@ -84,7 +67,8 @@ def query_dbs(db_dir, seq_type, accs):
 
     return taxonomy
 
-def result_append(in_path, out_path, taxonomy, file_type):
+def result_append(in_path: Path, out_path: Path,
+                  taxonomy: Dict[str, Dict[str, str]], file_type: str) -> None:
     '''Appends taxonomy info line-by-line to the SAM file and writes the
     result to `out_sam_path`.
     '''
@@ -92,7 +76,7 @@ def result_append(in_path, out_path, taxonomy, file_type):
     acc_column = 2 if file_type == 'sam' else 1
     ranks = ('family', 'genus', 'species', 'lineage')
 
-    with open(in_path, 'r') as infile, open(out_path, 'w') as outfile:
+    with in_path.open('r') as infile, out_path.open('w') as outfile:
 
         out = csv.writer(outfile, delimiter='\t', quoting=csv.QUOTE_NONE)
 
@@ -101,11 +85,12 @@ def result_append(in_path, out_path, taxonomy, file_type):
             sam_line = line.strip().split()
             acc = line[acc_column]
 
-            ranks = ('{}--{}'.format(rnk, taxonomy[acc][rnk]) for rnk in ranks)
+            ranks = ['{}--{}'.format(rnk, taxonomy[acc][rnk]) for rnk in ranks]
 
             out.writerow(sam_line.extend(ranks))
 
-def table_generator(annotated, snap_rap, acc, species, genus, family):
+def table_generator(annotated: Path, snap_rap: str, acc: str, species: str,
+                    genus: str, family: str) -> None:
     '''Runs external script `table_generator.sh`'''
 
     assert snap_rap in ('SNAP', 'RAP')
@@ -119,7 +104,8 @@ def table_generator(annotated, snap_rap, acc, species, genus, family):
 
     subprocess.check_call(cmd)
 
-def taxonomy_lookup(infile, outfile, db_dir, seq_type, file_type):
+def taxonomy_lookup(infile: Path, outfile: Path, db_dir: Path,
+                    seq_type: str, file_type: str) -> None:
     '''Given a SAM file, look up taxonomy information for each sequence,
     append the taxonomy information to the end of each SAM line, and write this
     to a new file.
@@ -130,19 +116,3 @@ def taxonomy_lookup(infile, outfile, db_dir, seq_type, file_type):
     taxonomy = query_dbs(db_dir, seq_type, accs)
 
     result_append(infile, outfile, taxonomy, file_type)
-
-def main():
-    '''Main function for calling taxonomy_lookup() directly from the command
-    line.
-
-    However, this module was designed to be imported into surpi.py
-    '''
-
-    args = arguments()
-
-    taxonomy_lookup(args.input_file, args.output_file,
-                    args.tax_dir, args.seq_type, args.file_type)
-
-
-if __name__ == '__main__':
-    main()

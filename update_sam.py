@@ -84,7 +84,7 @@ def compare_sam(infile: Path, outfile: Path):
 
                     total_edit_dist_existing += edit_distance_prev
 
-        output.write(output_line)
+            output.write(output_line)
 
 def update_sam(infile: Path, outfile: Path):
 

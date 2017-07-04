@@ -380,7 +380,7 @@ def validation(inputfile: Path, workdir: Path, fastq_log: Path,
 def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
           quality_cutoff: int, length_cutoff: int, adapter_set: str,
           crop_start: int, crop_length: int, edit_distance: int,
-          snap_db_dir: Path, tax_db_dir: Path, ribo_dir: Path, cache_reset,
+          host_snap_dir: Path, tax_db_dir: Path, ribo_dir: Path, cache_reset,
           abyss_kmer: int, ignore_barcodes: bool,
           comprehensive: bool, rapsearch_mode: str, rapsearch_vir_db: Path,
           rapsearch_nr_db: Path, vir_cutoff: int, nr_cutoff: int,
@@ -391,11 +391,12 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
                               fastq_type, quality_cutoff, length_cutoff,
                               crop_start, crop_length)
 
-    subtracted_fastq = host_subtract(preprocessed, snap_db_dir, edit_distance,
-                                     temp_dir, cores)
+    subtracted_fastq = host_subtract(preprocessed, host_snap_dir,
+                                     edit_distance, temp_dir, cores)
 
-    viruses, viruses_fastq, uniqunmatched = snap(sample, workdir, snap_db_dir,
-                                                 tax_db_dir, ribo_dir, cores,
+    viruses, viruses_fastq, uniqunmatched = snap(subtracted_fastq, workdir,
+                                                 snap_db_dir, tax_db_dir,
+                                                 ribo_dir, cores,
                                                  edit_distance, cache_reset,
                                                  comprehensive, temp_dir)
 
