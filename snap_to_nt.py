@@ -172,14 +172,14 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 
     if mode == 'BAC':
 
-        snap_large = ribo_dir / 'snap_index_23sRNA'
-        snap_small = ribo_dir / 'snap_index_rdp_typed_iso_goodq_9210seqs'
+        snap_large = ribo_dir / '23s.fa.snap_index'
+        snap_small = ribo_dir / 'rdp_typed_iso_goodq_9210seqs.fa.snap_index'
 
     else:
 
         snap_large = ribo_dir / \
-                'snap_index_28s_rRNA_gene_NOT_partial_18s_spacer_5.8s.fa'
-        snap_small = ribo_dir / 'snap_index_18s_rRNA_gene_not_partial.fa'
+                '28s_rRNA_gene_NOT_partial_18s_spacer_5.8s.fa.snap_index'
+        snap_small = ribo_dir / '18s_rRNA_gene_not_partial.fa.snap_index'
 
     with tempfile.TemporaryDirectory(dir=str(tempdir)) as ephemeral:
 
@@ -204,6 +204,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 
         # inplace conversion of sam -> fastq
         large_out.write_text(annotated_to_fastq(large_out))
+        large_out = large_out.with_suffix('.fastq')
 
         snap2 = ('snap', 'single', snap_small, large_out, '-o', small_out,
                  '-t', cores, '-h', 250, '-d', 18, '-n', 200, '-F', 'u')
@@ -214,20 +215,15 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 
     table_generator(noribo, 'SNAP', 'N', 'Y', 'N', 'N')
 
-def extract_headers(basef: Path, workdir: Path, cores: int) -> Path:
+def extract_headers(parentfile: Path, queryfile: Path, output: Path):
 
-    cmd = ('bash',  # TODO: maybe clean up by replacing
-        'extractHeaderFromFastq_ncores.sh', cores,
-        workdir / basef.with_suffix('.cutadapt.fastq'),
-        workdir / basef.with_suffix('.NT.snap.matched.sam'),
-        workdir / basef.with_suffix('.NT.snap.matched.fulllength.fastq'),
-        workdir / basef.with_suffix('.NT.snap.unmatched.sam'),
-        workdir / basef.with_suffix('.NT.snap.unmatched.fulllength.fastq')
-        )
-    print(cmd)
-    subprocess.check_call([str(arg) for arg in cmd])
+    with queryfile.open('r') as query:
+        headers = set(line.split()[0] for line in query)
 
-    return cmd[-1]
+    with parentfile.open('r') as parent, output.open('w') as out:
+        for rec in SeqIO.parse(parent, 'fastq'):
+            if rec.id in headers:
+                SeqIO.write(rec, out, 'fastq')
 
 def lookup_taxonomy(basef: Path, annotated: Path, workdir: Path,
                     tax_db_dir: Path) -> Tuple[Path, Path, Path]:
@@ -349,16 +345,26 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
     basef = Path(subtracted.stem)
     annotated = workdir / basef.with_suffix('.annotated')
 
+    matched = workdir / basef.with_suffix('.NT.snap.matched.sam')
+    unmatched = workdir / basef.with_suffix('.NT.snap.unmatched.sam')
+
+    cutadapt_fastq = workdir / basef.with_suffix('.cutadapt.fastq')
+
     snap_sam = snap_unmatched(subtracted, workdir, temp_dir,
                               snap_db_dir, edit_distance, cores)
 
-    matched, unmatched = separate_sam_lines(snap_sam)
+    matched_lines, unmatched_lines = separate_sam_lines(snap_sam)
 
-    write_sam(matched, workdir / basef.with_suffix('.NT.snap.matched.sam'))
-    write_sam(unmatched, workdir / basef.with_suffix('.NT.snap.unmatched.sam'))
+    write_sam(matched_lines, matched)
+    write_sam(unmatched_lines, unmatched)
 
+    fulllength_unmatched = unmatched.with_suffix('.fulllength.fastq')
 
-    fulllength_fastq = extract_headers(basef, workdir, cores)
+    extract_headers(cutadapt_fastq, matched,
+                    matched.with_suffix('.fulllenth.fastq'))
+
+    extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched)
+
     viruses, bacteria, euks = lookup_taxonomy(basef, annotated, workdir,
                                               tax_db_dir)
 
@@ -374,9 +380,9 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
         viruses_fastq.write_text(annotated_to_fastq(viruses))
 
         # output of this given to denovo assembly and RAPSearch
-        extract_to_fast(fulllength_fastq,
-                        fulllength_fastq.with_suffix('.fasta'),
-                        fulllength_fastq.with_suffix('.uniq.f1.fasta'),
+        extract_to_fast(fulllength_unmatched,
+                        fulllength_unmatched.with_suffix('.fasta'),
+                        fulllength_unmatched.with_suffix('.uniq.f1.fasta'),
                         temp_dir)
 
-    return viruses, viruses_fastq, fulllength_fastq.with_suffix('.uniq.f1.fasta')
+    return viruses, viruses_fastq, fulllength_unmatched.with_suffix('.uniq.f1.fasta')

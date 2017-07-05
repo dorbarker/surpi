@@ -99,7 +99,7 @@ def table_generator(annotated: Path, snap_rap: str, acc: str, species: str,
     assert genus in ('Y', 'N')
     assert family in ('Y', 'N')
 
-    cmd = ('table_generator.sh', str(annotated),
+    cmd = ('bash', 'table_generator.sh', str(annotated),
            snap_rap, acc, species, genus, family)
 
     subprocess.check_call(cmd)
