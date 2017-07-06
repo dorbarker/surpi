@@ -99,7 +99,8 @@ def table_generator(annotated: Path, snap_rap: str, acc: str, species: str,
     assert genus in ('Y', 'N')
     assert family in ('Y', 'N')
 
-    cmd = ('bash', 'table_generator.sh', str(annotated),
+    # TODO: MUST remove this diagnostic code
+    cmd = ('bash', '/home/dbarker/Projects/surpi/table_generator.sh', str(annotated),
            snap_rap, acc, species, genus, family)
 
     subprocess.check_call(cmd)

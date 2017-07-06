@@ -225,20 +225,19 @@ def extract_headers(parentfile: Path, queryfile: Path, output: Path):
             if rec.id in headers:
                 SeqIO.write(rec, out, 'fastq')
 
-def lookup_taxonomy(basef: Path, annotated: Path, workdir: Path,
-                    tax_db_dir: Path) -> Tuple[Path, Path, Path]:
+def lookup_taxonomy(matched_fastq: Path, matched_sam: Path,  annotated: Path,
+                    workdir: Path, tax_db_dir: Path) -> Tuple[Path, Path, Path]:
     '''Looks up the taxonomy of annotated reads'''
 
-    full_length_fastq = basef.with_suffix('.NT.snap.matched.fulllength.fastq')
-    full_length_sam = full_length_fastq.with_suffix('.sam')
+    full_length_sam = matched_fastq.with_suffix('.sam')
 
     # sort sam
-    with (workdir / basef.with_suffix('.NT.snap.matched.sam')).open('r') as sam:
+    with matched_sam.open('r') as sam:
         lines = sam.readlines()
         sorted_lines = sorted(lines, key=lambda x: x[0])
 
     # may need to double-check sequence sorting here
-    with (workdir / full_length_fastq).open('r') as fastq:
+    with matched_fastq.open('r') as fastq:
 
         seq_quals = []
         for rec in SeqIO.parse(fastq, 'fastq'):
@@ -358,15 +357,15 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
     write_sam(matched_lines, matched)
     write_sam(unmatched_lines, unmatched)
 
-    fulllength_unmatched = unmatched.with_suffix('.fulllength.fastq')
+    fulllength_unmatched_fastq = unmatched.with_suffix('.fulllength.fastq')
+    fulllength_matched_fastq = matched.with_suffix('.fulllength.fastq')
 
-    extract_headers(cutadapt_fastq, matched,
-                    matched.with_suffix('.fulllenth.fastq'))
+    extract_headers(cutadapt_fastq, matched, fulllength_matched_fastq)
 
-    extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched)
+    extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
 
-    viruses, bacteria, euks = lookup_taxonomy(basef, annotated, workdir,
-                                              tax_db_dir)
+    viruses, bacteria, euks = lookup_taxonomy(fulllength_matched_fastq, matched,
+                                              annotated, workdir, tax_db_dir)
 
     viruses_fastq = viruses.with_suffix('.fastq')
 
@@ -380,9 +379,9 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
         viruses_fastq.write_text(annotated_to_fastq(viruses))
 
         # output of this given to denovo assembly and RAPSearch
-        extract_to_fast(fulllength_unmatched,
-                        fulllength_unmatched.with_suffix('.fasta'),
-                        fulllength_unmatched.with_suffix('.uniq.f1.fasta'),
+        extract_to_fast(fulllength_unmatched_fastq,
+                        fulllength_unmatched_fastq.with_suffix('.fasta'),
+                        fulllength_unmatched_fastq.with_suffix('.uniq.f1.fasta'),
                         temp_dir)
 
-    return viruses, viruses_fastq, fulllength_unmatched.with_suffix('.uniq.f1.fasta')
+    return viruses, viruses_fastq, fulllength_unmatched_fastq.with_suffix('.uniq.f1.fasta')
