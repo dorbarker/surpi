@@ -21,8 +21,8 @@ def sequniq(matched: Path, uniqvir: Path):
 
     subprocess.check_call(sequniq_cmd)
 
-def abyss(unmatched_add_vir, length, contig_cutoff, cores, kmer,
-          ignore_barcodes):
+def abyss(unmatched_add_vir: Path, length: int, cores: int, kmer: int,
+          ignore_barcodes: bool):
     '''Executes abyss_minimus.sh'''
 
     contig_cutoff = int(1.75 * length)
@@ -67,6 +67,6 @@ def assemble(matched_vir_fastq: Path, uniqunmatched: Path, workdir: Path,
 
         concatenate(matched_vir_uniq, uniqunmatched, output=addvir)
 
-    abyss(addvir, sample_fq_length, contig_cutoff, cores, kmer, ignore_barcodes)
+    abyss(addvir, sample_fq_length, cores, kmer, ignore_barcodes)
 
     return output

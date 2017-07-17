@@ -4,11 +4,12 @@ import sys
 import argparse
 import subprocess
 import hashlib
+import re
 from math import ceil
 from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 from pathlib import Path
-from typing import Tuple, Any
+from typing import Tuple, Any, Dict
 from Bio import SeqIO
 from Bio.Seq import Seq
 from utilities import user_msg, pigz
@@ -104,6 +105,38 @@ def download_curated(dest: Path):
     for dl in download_list:
         download_file(chiu / dl, dest / dl, overwrite=False)
 
+def load_lookup(gi_acc: Path) -> Dict[str, str]:
+
+    lookup = {}
+
+    with gi_acc.open('r') as lookup_table:
+        for line in lookup_table:
+            gi, acc = line.strip().split()
+            lookup[gi] = acc
+
+    return lookup
+
+def gi_to_accession(fasta: Path, lookup: Dict[str, str]) -> None:
+    '''Converts the GI numbers in chiulab data to accession'''
+
+    def extract_gi(identifier: str) -> str:
+        _, gi, _ = re.match('gi\|([0-9]*)\|', identifier).group().split('|')
+        return gi
+
+    temp = fasta.with_suffix('.tmp')
+
+    with fasta.open('r') as infile, temp.open('w') as outfile:
+        for record in SeqIO.parse(infile, 'fasta'):
+
+            gi = extract_gi(record.id)
+
+            acc = lookup[gi]
+
+            record.id = acc
+
+            SeqIO.write(record, outfile, 'fasta')
+
+    outfile.replace(infile)
 
 def md5check(directory: Path):
     '''Checks that each downloaded file matches its expected MD5 sum'''
