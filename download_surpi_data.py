@@ -106,12 +106,18 @@ def download_curated(dest: Path):
         download_file(chiu / dl, dest / dl, overwrite=False)
 
 def load_lookup(gi_acc: Path) -> Dict[str, str]:
+    '''Loads precalculated lookup table of gi-accession equivalencies'''
 
     lookup = {}
 
     with gi_acc.open('r') as lookup_table:
+
         for line in lookup_table:
-            gi, acc = line.strip().split()
+
+            gi, acc_ver = line.strip().split()
+
+            acc, ver = acc_ver.split('.')
+
             lookup[gi] = acc
 
     return lookup
@@ -132,11 +138,31 @@ def gi_to_accession(fasta: Path, lookup: Dict[str, str]) -> None:
 
             acc = lookup[gi]
 
+            record.name = ''
+            record.description = ''
             record.id = acc
-
             SeqIO.write(record, outfile, 'fasta')
 
-    outfile.replace(infile)
+    temp.replace(fasta)
+
+def convert_curated_to_accession(curated_dir: Path, lookup_table: Path) -> None:
+
+    def handle_rdp(rdp_file: Path) -> None:
+
+        temp = rdp_file.with_suffix('.tmp')
+
+        with rdp_file.open('r') as infile, temp.open('w') as outfile:
+
+            for record in SeqIO.parse(outfile, 'fasta'):
+
+                acc = rec.description.split(';')[-1].strip()
+                record.description = ''
+                record.name = ''
+                record.id = acc
+
+                SeqIO.write(record, outfile, 'fasta')
+
+        temp.replace(rdp_file)
 
 def md5check(directory: Path):
     '''Checks that each downloaded file matches its expected MD5 sum'''
