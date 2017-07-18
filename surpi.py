@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
 
 # system imports
-import glob
-import os
 import argparse
 import subprocess
-from multiprocessing import cpu_count
 import sys
+from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Dict
 
@@ -333,6 +331,9 @@ def verify_rapsearch_databases(viral: Path, nr: Path) -> None:
 
 @logtime('Fastq validation')
 def validate_fastqs(fastq_file, logfile, mode):
+    '''Using external program fastQValidator, ensure input fastq files are
+    valid.
+    '''
 
     assert mode in range(4), 'Invalid fastq validation mode'
     modes = (
@@ -348,7 +349,7 @@ def validate_fastqs(fastq_file, logfile, mode):
 
         try:
             cmd = modes[mode]
-            result = run_shell(cmd.format(fastq_file, logfile))
+            run_shell(cmd.format(fastq_file, logfile))
 
         except subprocess.CalledProcessError:
             msg = '{} appears to be invalid. Check {} for details'
@@ -363,8 +364,13 @@ def validate_fastqs(fastq_file, logfile, mode):
 
 @logtime('Sample and DB Validation')
 def validation(inputfile: Path, workdir: Path, fastq_log: Path,
-               validation_mode: int, snap_db_dir: Path,
-               rapsearch_vir_db: Path, rapsearch_nr_db: Path):
+               validation_mode: int, reference: Path,
+               comprehensive: bool) -> Path:
+
+    snap_db = 'comp_snap' if comprehensive else 'fast_snap'
+    snap_db_dir = reference / snap_db
+    rapsearch_nr_db = reference / 'rapsearch' / 'rapsearch_nr'
+    rapsearch_vir_db = reference / 'rapsearch' / 'rapsearch_viral'
 
     sample = ensure_fastq(inputfile, workdir)
 
@@ -380,12 +386,19 @@ def validation(inputfile: Path, workdir: Path, fastq_log: Path,
 def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
           quality_cutoff: int, length_cutoff: int, adapter_set: str,
           crop_start: int, crop_length: int, edit_distance: int,
-          host_snap_dir: Path, tax_db_dir: Path, ribo_dir: Path, cache_reset,
-          abyss_kmer: int, ignore_barcodes: bool,
-          comprehensive: bool, rapsearch_mode: str, rapsearch_vir_db: Path,
-          rapsearch_nr_db: Path, vir_cutoff: int, nr_cutoff: int,
-          fast: bool, evalue: str, cores: int):
+          reference: Path, cache_reset, abyss_kmer: int, ignore_barcodes: bool,
+          comprehensive: bool, rapsearch_mode: str, vir_cutoff: int,
+          nr_cutoff: int, fast: bool, evalue: str, cores: int) -> None:
     '''Master function for SURPI pipeline'''
+
+    snap_db = 'comp_snap' if comprehensive else 'fast_snap'
+
+    host_snap_dir = reference / 'host_snap'
+    rapsearch_nr_db = reference / 'rapsearch' / 'rapsearch_nr'
+    rapsearch_vir_db = reference / 'rapsearch' / 'rapsearch_viral'
+    ribo_dir = reference / 'riboclean_snap'
+    tax_db_dir = reference / 'taxonomy'
+    snap_db_dir = reference / snap_db
 
     preprocessed = preprocess(sample, workdir, temp_dir, adapter_set,
                               fastq_type, quality_cutoff, length_cutoff,
