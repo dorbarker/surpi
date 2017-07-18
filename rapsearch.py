@@ -8,8 +8,8 @@ from typing import List
 
 from Bio import SeqIO
 from utilities import concatenate
-from taxonomy_lookup import taxonomy_lookup, table_generator
-
+from taxonomy_lookup import taxonomy_lookup
+from table_generator import table_generator
 def run_rapsearch(query: Path, output: Path, database: Path, cores: int,
                   cutoff: int, fast: bool, log: Path) -> None:
     '''Runs RAPSearch with some default arguments overriden.'''
@@ -183,8 +183,7 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
     rapsearch_shared(query, vir_output, vir_database, tax_db_dir,
                      cores, vir_cutoff, fast, log)
 
-    table_generator(vir_output.with_suffix('.annotated'),
-                    'RAP', 'N', 'Y', 'N', 'N')
+    table_generator('RAP', 'Genus', vir_output.with_suffix('.annotated'))
 
     concatenate(m8, abyss_output, output=contigs_nt_unmatched_fasta)
 
@@ -198,20 +197,22 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
     viruses = filter_taxonomy('Viruses', nr_output)
     virus_tax.write_text('\n'.join(viruses))
 
-    table_generator(virus_tax, 'RAP', 'Y', 'Y', 'Y', 'Y')
 
     contigs = filter_taxonomy('^contig', nr_output)
     contig_tax.write_text('\n'.join(contigs))
 
-    table_generator(contig_tax, 'RAP', 'Y', 'Y', 'Y', 'Y')
+    for outtype in ('Accession', 'Species', 'Genus', 'Family'):
 
+        table_generator('RAP', outtype, contig_tax)
+
+        table_generator('RAP', outtype, virus_tax)
 
     coverage_map(snap_match_annot, virus_tax, evalue, cores)
 
     not_in_nr = vir_nr_difference(viruses, contigs)
     not_in_nr_annot.write_text('\n'.join(not_in_nr))
 
-    table_generator(not_in_nr_annot, 'RAP', 'N', 'Y', 'N', 'N')
+    table_generator('RAP', 'Genus', not_in_nr_annot)
 
 def rapsearch_nr(snap_unmatched: Path, workdir: Path, abyss_output: Path,
                  rap_database: Path, tax_db_dir: Path, cutoff: int, fast: bool,
@@ -235,5 +236,9 @@ def rapsearch_nr(snap_unmatched: Path, workdir: Path, abyss_output: Path,
     virus_tax.write_text('\n'.join(virus))
     novir_tax.write_text('\n'.join(novir))
 
-    table_generator(virus_tax, 'RAP', 'Y', 'Y', 'Y', 'Y')
-    table_generator(novir_tax, 'RAP', 'N', 'Y', 'N', 'N')
+
+    for outtype in ('Accession', 'Species', 'Genus', 'Family'):
+
+        table_generator('RAP', outtype, virus_tax)
+
+    table_generator('RAP', 'Genus', novir_tax)

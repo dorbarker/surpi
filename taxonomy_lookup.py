@@ -7,7 +7,7 @@ import csv
 import subprocess
 
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Sequence
 
 def get_accession_numbers(path: Path, file_type: str) -> List[str]:
     '''Extracts a non-redundant sorted list of accessions from
@@ -74,7 +74,7 @@ def result_append(in_path: Path, out_path: Path,
     '''
 
     acc_column = 2 if file_type == 'sam' else 1
-    ranks = ('family', 'genus', 'species', 'lineage')
+    ranks = ('family', 'genus', 'species', 'lineage')  # type: Sequence[str]
 
     with in_path.open('r') as infile, out_path.open('w') as outfile:
 
@@ -88,22 +88,6 @@ def result_append(in_path: Path, out_path: Path,
             ranks = ['{}--{}'.format(rnk, taxonomy[acc][rnk]) for rnk in ranks]
 
             out.writerow(sam_line.extend(ranks))
-
-def table_generator(annotated: Path, snap_rap: str, acc: str, species: str,
-                    genus: str, family: str) -> None:
-    '''Runs external script `table_generator.sh`'''
-
-    assert snap_rap in ('SNAP', 'RAP')
-    assert acc in ('Y', 'N')
-    assert species in ('Y', 'N')
-    assert genus in ('Y', 'N')
-    assert family in ('Y', 'N')
-
-    # TODO: MUST remove this diagnostic code
-    cmd = ('bash', '/home/dbarker/Projects/surpi/table_generator.sh', str(annotated),
-           snap_rap, acc, species, genus, family)
-
-    subprocess.check_call(cmd)
 
 def taxonomy_lookup(infile: Path, outfile: Path, db_dir: Path,
                     seq_type: str, file_type: str) -> None:

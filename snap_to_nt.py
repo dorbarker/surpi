@@ -9,7 +9,8 @@ from multiprocessing import cpu_count
 from typing import List, Tuple, Union
 from utilities import logtime, annotated_to_fastq, fastq_to_fasta, sam_to_fasta
 from Bio import SeqIO
-from taxonomy_lookup import taxonomy_lookup, table_generator
+from taxonomy_lookup import taxonomy_lookup
+from table_generator import table_generator
 from preprocessing import crop_reads
 import update_sam
 
@@ -213,7 +214,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 
         extract_sam_from_sam(inputfile, noribo, small_out)
 
-    table_generator(noribo, 'SNAP', 'N', 'Y', 'N', 'N')
+    table_generator('SNAP', 'Genus', noribo)
 
 def extract_headers(parentfile: Path, queryfile: Path, output: Path):
 
@@ -372,7 +373,9 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
     ribo_snap(bacteria, 'BAC', cores, ribo_dir, temp_dir)
     ribo_snap(euks, 'EUK', cores, ribo_dir, temp_dir)
 
-    table_generator(viruses, 'SNAP', 'Y', 'Y', 'Y', 'Y')
+    for outtype in ('Accession', 'Genus', 'Species', 'Family'):
+
+        table_generator('SNAP', outtype, viruses)
 
     if comprehensive:
 

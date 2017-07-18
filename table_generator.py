@@ -95,8 +95,9 @@ def write_table(table: List[List[str]], outpath: Path) -> None:
         for row in table:
             out.writerow(row)
 
-def table_generator(file_type: str, mode: str,
-                    annotated: Path, outpath: Path) -> None:
+def table_generator(file_type: str, mode: str, annotated: Path) -> None:
+
+    outpath = annotated.with_suffix('.{}_counttable'.format(mode))
 
     table = create_tab_delimited_table(file_type, annotated)
 
