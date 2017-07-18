@@ -97,7 +97,10 @@ def download_ncbi(dest: Path, overwrite: bool):
 
 
 def download_curated(dest: Path):
-    '''Download curated data from the Chiu lab web server'''
+    '''Download curated data from the Chiu lab web server
+    Unlike download_ncbi(), download_curated() will never clobber
+    existing files, as they are no longer being updated.
+    '''
 
     ensure_dir(dest)
 
@@ -126,7 +129,12 @@ def load_lookup(gi_acc: Path) -> Dict[str, str]:
 
             gi, acc_ver = line.strip().split()
 
-            acc, ver = acc_ver.split('.')
+            try:
+                acc, ver = acc_ver.split('.')
+
+            except ValueError:  # 119 Accessions do not have a version number
+
+                acc = acc_ver
 
             lookup[gi] = acc
 
@@ -144,13 +152,18 @@ def gi_to_accession(fasta: Path, lookup: Dict[str, str]) -> None:
     with fasta.open('r') as infile, temp.open('w') as outfile:
         for record in SeqIO.parse(infile, 'fasta'):
 
-            gi = extract_gi(record.id)
+            try:
+                gi = extract_gi(record.id)
 
-            acc = lookup[gi]
+                acc = lookup[gi]
 
-            record.name = ''
-            record.description = ''
-            record.id = acc
+                record.name = ''
+                record.description = ''
+                record.id = acc
+
+            except AttributeError:
+                pass
+
             SeqIO.write(record, outfile, 'fasta')
 
     temp.replace(fasta)
@@ -184,7 +197,7 @@ def convert_curated_to_accession(curated_dir: Path, lookup: Path) -> None:
     lookup_table = load_lookup(lookup)
 
     for fasta in fastas:
-
+        user_msg(fasta)
         if fasta.name.startswith('rdp'):
 
             handle_rdp(fasta)
@@ -228,15 +241,11 @@ def md5check(directory: Path):
     if not success:
         sys.exit(1)
 
-def prerapsearch(database: Path, name: str, output: Path) -> None:
+def prerapsearch(database: Path, output: Path) -> None:
     '''Run prerapsearch, which creates the required databases for rapsearch'''
 
-    cmd = ('prerapsearch', '-d', str(database), '-n', str(name))
+    cmd = ('prerapsearch', '-d', str(database), '-n', str(output))
     subprocess.check_call(cmd)
-
-    info = Path(name).with_suffix('.info')
-    (output / name).symlink_to(name)
-    (output / info).symlink_to(info)
 
 def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
     '''Handles database preparaing and symlink creation to prepare data for
@@ -334,8 +343,8 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
     # as they're long-running and relatively low-memory
     with ProcessPoolExecutor(max_workers=2) as executor:
 
-        executor.submit(prerapsearch, nr, 'rapsearch_nr', rap)
-        executor.submit(prerapsearch, viral, 'rapsearch_viral', rap)
+        executor.submit(prerapsearch, nr, rap / 'rapsearch_nr')
+        executor.submit(prerapsearch, viral, rap / 'rapsearch_viral')
 
     snap_index_nt(nt, comp, 120)
 
