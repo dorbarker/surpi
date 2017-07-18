@@ -5,17 +5,19 @@ import argparse
 import subprocess
 import hashlib
 import re
-from math import ceil
+from itertools import chain
 from concurrent.futures import ProcessPoolExecutor
 from datetime import date
 from pathlib import Path
 from typing import Tuple, Any, Dict
+
 from Bio import SeqIO
-from Bio.Seq import Seq
+
 from utilities import user_msg, pigz
 from create_taxonomy_db import create_taxonomy_database
 
 def arguments():
+    '''Collect and pass arguments to the main script'''
 
     parser = argparse.ArgumentParser()
 
@@ -35,6 +37,10 @@ def arguments():
                         type=Path,
                         help='Path for SURPI reference data')
 
+    parser.add_argument('--lookup',
+                        type=Path,
+                        help='Path to gi -> accession lookup table')
+
     parser.add_argument('--overwrite',
                         action='store_true',
                         help='Overwrite existing data [off]')
@@ -42,11 +48,13 @@ def arguments():
     return parser.parse_args()
 
 def ensure_dir(directory: Path) -> None:
+    '''If directory does not exist, create it'''
 
     if not Path(directory).is_dir():
         Path(directory).mkdir()
 
 def download_file(src, dest, overwrite=False):
+    '''Using curl, download a file and it's corresponding MD5 sum'''
 
     if overwrite or not dest.exists():
 
@@ -57,6 +65,7 @@ def download_file(src, dest, overwrite=False):
         subprocess.call(db)
 
 def download_ncbi(dest: Path, overwrite: bool):
+    '''Download required data from NCBI'''
 
     ensure_dir(dest)
 
@@ -77,30 +86,31 @@ def download_ncbi(dest: Path, overwrite: bool):
 
         nucl = 'nucl_{}.accession2taxid.gz'.format(db)
 
-        url  = taxny / 'accession2taxid' / nucl
+        url = taxny / 'accession2taxid' / nucl
 
         download_file(url, dest / nucl, overwrite)
 
 
     prot = 'prot.accession2taxid.gz'
 
-    download_file(taxny / 'accession2taxid' / prot , dest / prot, overwrite)
+    download_file(taxny / 'accession2taxid' / prot, dest / prot, overwrite)
 
 
 def download_curated(dest: Path):
+    '''Download curated data from the Chiu lab web server'''
 
     ensure_dir(dest)
 
     chiu = Path('chiulab.ucsf.edu/SURPI/databases')
 
-    download_list=('Bacterial_Refseq_05172012.CLEAN.LenFiltered.uniq.fa.gz',
-                   'hg19_rRNA_mito_Hsapiens_rna.fa.gz',
-                   'rapsearch_viral_aa_130628_db_v2.12.fasta.gz',
-                   'viruses-5-2012_trimmedgi-MOD_addedgi.fa.gz',
-                   '18s_rRNA_gene_not_partial.fa.gz',
-                   '23s.fa.gz',
-                   '28s_rRNA_gene_NOT_partial_18s_spacer_5.8s.fa.gz',
-                   'rdp_typed_iso_goodq_9210seqs.fa.gz')
+    download_list = ('Bacterial_Refseq_05172012.CLEAN.LenFiltered.uniq.fa.gz',
+                     'hg19_rRNA_mito_Hsapiens_rna.fa.gz',
+                     'rapsearch_viral_aa_130628_db_v2.12.fasta.gz',
+                     'viruses-5-2012_trimmedgi-MOD_addedgi.fa.gz',
+                     '18s_rRNA_gene_not_partial.fa.gz',
+                     '23s.fa.gz',
+                     '28s_rRNA_gene_NOT_partial_18s_spacer_5.8s.fa.gz',
+                     'rdp_typed_iso_goodq_9210seqs.fa.gz')
 
     for dl in download_list:
         download_file(chiu / dl, dest / dl, overwrite=False)
@@ -145,7 +155,12 @@ def gi_to_accession(fasta: Path, lookup: Dict[str, str]) -> None:
 
     temp.replace(fasta)
 
-def convert_curated_to_accession(curated_dir: Path, lookup_table: Path) -> None:
+def convert_curated_to_accession(curated_dir: Path, lookup: Path) -> None:
+    '''Using a lookup between gi numbers and accession numbers, replace
+    each fasta header with the its accession equivalent. In the case of
+    `rdp_typed...`, split on semicolons and take the last element to
+    get the accession.
+    '''
 
     def handle_rdp(rdp_file: Path) -> None:
 
@@ -153,9 +168,9 @@ def convert_curated_to_accession(curated_dir: Path, lookup_table: Path) -> None:
 
         with rdp_file.open('r') as infile, temp.open('w') as outfile:
 
-            for record in SeqIO.parse(outfile, 'fasta'):
+            for record in SeqIO.parse(infile, 'fasta'):
 
-                acc = rec.description.split(';')[-1].strip()
+                acc = record.description.split(';')[-1].strip()
                 record.description = ''
                 record.name = ''
                 record.id = acc
@@ -163,6 +178,20 @@ def convert_curated_to_accession(curated_dir: Path, lookup_table: Path) -> None:
                 SeqIO.write(record, outfile, 'fasta')
 
         temp.replace(rdp_file)
+
+    fastas = chain(curated_dir.glob('*.fa'), curated_dir.glob('*.fasta'))
+
+    lookup_table = load_lookup(lookup)
+
+    for fasta in fastas:
+
+        if fasta.name.startswith('rdp'):
+
+            handle_rdp(fasta)
+
+        else:
+
+            gi_to_accession(fasta, lookup_table)
 
 def md5check(directory: Path):
     '''Checks that each downloaded file matches its expected MD5 sum'''
@@ -200,6 +229,7 @@ def md5check(directory: Path):
         sys.exit(1)
 
 def prerapsearch(database: Path, name: str, output: Path) -> None:
+    '''Run prerapsearch, which creates the required databases for rapsearch'''
 
     cmd = ('prerapsearch', '-d', str(database), '-n', str(name))
     subprocess.check_call(cmd)
@@ -209,7 +239,9 @@ def prerapsearch(database: Path, name: str, output: Path) -> None:
     (output / info).symlink_to(info)
 
 def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
-
+    '''Handles database preparaing and symlink creation to prepare data for
+    the main SURPI pipeline
+    '''
 
     def snap_index(fasta: Path, dest_dir: Path, extra_args: Tuple[Any, ...]) -> None:
 
@@ -239,12 +271,10 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
         return subdirs
 
-    def snap_index_nt(nt: Path, destdir: Path, prefix: str, n_chunks: int):
-
-        # mask ambiguous positions with N, else SNAP fails
-        tr = str.maketrans('WSMKRYBDHV', 'NNNNNNNNNN')
-
-        output = nt.with_name('{}_{}'.format(prefix, nt.name))
+    def snap_index_nt(nt: Path, destdir: Path, n_chunks: int):
+        '''Divide the nt database into more easily managed chunks,
+        and SNAP index each chunk
+        '''
 
         splitfasta = ('gt', 'splitfasta', '-force', '-numfiles', n_chunks, nt)
 
@@ -252,22 +282,7 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
         for chunk in nt.parent.glob('*.[0-9]*'):
 
-            dest = destdir / (prefix + nt.name + chunk.suffix)
-
-      #      with chunk.open('r') as infile:
-       #         records = list(SeqIO.parse(infile, 'fasta'))
-
-#            with chunk.open('w') as outfile:
-
- #               for rec in records:
-  #                  rec.description = ''
-   #                 rec.id = rec.id[:rec.id.rfind('.')]
-    #                rec.seq = Seq(str(rec.seq).translate(tr))
-     #               SeqIO.write(rec, outfile, 'fasta')
-
             snap_index(chunk, destdir, ('-s', 22, '-locationSize', 5))
-
-    today = '{}-{}-{}'.format(*date.today().timetuple()[:3])
 
     tax, rap, fast, comp, ribo, host = setup_reference_dirs(reference)
 
@@ -281,15 +296,15 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
         pigz(nt.with_suffix('.gz'), nt)
 
     # Create taxonomy databases
-    #create_taxonomy_database(ncbi)
+    create_taxonomy_database(ncbi)
 
-    #for tax_src in ncbi.glob('*.db'):
-    #    tax_dst = reference / tax_src.name
-    #    tax_dst.symlink_to(tax_src)
+    for tax_src in ncbi.glob('*.db'):
+        tax_dst = tax / tax_src.name
+        tax_dst.symlink_to(tax_src)
 
     # SNAP indices
     for gz_file in curated.glob('*.gz'):
-        break  # remove
+
         decomp = gz_file.with_suffix('')
 
         if not decomp.exists():
@@ -301,7 +316,7 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
         elif decomp.name.startswith('hg19'):
 
-            snap_index(decomp, reference, ('-s', 22, '-hg19'))
+            snap_index(decomp, host, ('-s', 22, '-hg19'))
 
         elif decomp.name.startswith('Bacterial_Refseq'):
 
@@ -317,24 +332,25 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
 
     # Run prerapsearch procs concurrently,
     # as they're long-running and relatively low-memory
-    #with ProcessPoolExecutor(max_workers=2) as executor:
+    with ProcessPoolExecutor(max_workers=2) as executor:
 
-     #   executor.submit(prerapsearch, nr, 'rapsearch_nr', rap)
-      #  executor.submit(prerapsearch, viral, 'rapsearch_viral', rap)
+        executor.submit(prerapsearch, nr, 'rapsearch_nr', rap)
+        executor.submit(prerapsearch, viral, 'rapsearch_viral', rap)
 
-    snap_index_nt(nt, comp, today, 120)
+    snap_index_nt(nt, comp, 120)
 
 def main():
 
     args = arguments()
 
     # NCBI data
-    #download_ncbi(args.ncbi, args.overwrite)
-    #md5check(args.ncbi)
+    download_ncbi(args.ncbi, args.overwrite)
+    md5check(args.ncbi)
 
     # Chiu lab data
-    #download_curated(args.curated)
-    #md5check(args.curated)
+    download_curated(args.curated)
+    md5check(args.curated)
+    convert_curated_to_accession(args.curated, args.lookup)
 
     organize_data(args.ncbi, args.curated, args.reference)
 
