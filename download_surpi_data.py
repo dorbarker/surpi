@@ -285,13 +285,19 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
         and SNAP index each chunk
         '''
 
-        splitfasta = ('gt', 'splitfasta', '-force', '-numfiles', n_chunks, nt)
+        splitfasta = ('gt', 'splitfasta', '-numfiles', n_chunks, nt)
 
         subprocess.check_call([str(arg) for arg in splitfasta])
 
         for chunk in nt.parent.glob('*.[0-9]*'):
 
-            snap_index(chunk, destdir, ('-s', 22, '-locationSize', 5))
+            try:
+
+                snap_index(chunk, destdir, ('-s', 22, '-locationSize', 5))
+
+            finally:
+
+                chunk.unlink()  # Tidy up split fastas
 
     tax, rap, fast, comp, ribo, host = setup_reference_dirs(reference)
 
