@@ -46,10 +46,10 @@ def compare_sam(infile: Path, outfile: Path):
                         replacements += 1
                         sum_data += edit_distance
 
-                        gi = data[2].split('|')[1]
+                        acc = data[2]
 
                         original = '|{}|{}'.format(*first_entry[:2])
-                        rep = '|{}|{}'.format(edit_distance, gi)
+                        rep = '|{}|{}'.format(edit_distance, acc)
 
                         output_line = line.replace(original, rep, 1)
 
@@ -64,9 +64,9 @@ def compare_sam(infile: Path, outfile: Path):
 
                     existing_hits += 1
                     sum_data += edit_distance
-                    gi = data[2].split('|')[1]
+                    acc = data[2]
 
-                    rep = '{}|{}|{}'.format(data[0], edit_distance, gi)
+                    rep = '{}|{}|{}'.format(data[0], edit_distance, acc)
 
                     output_line = line.replace(data[0], rep, 1)
 
@@ -103,13 +103,11 @@ def update_sam(infile: Path, outfile: Path):
 
             if len(header) > 1:
 
-                fst, dvalue, gi, *_ = header
+                fst, dvalue, acc, *_ = header
 
                 edit_distance = int(data[12].split(':')[2])
 
-                rep = 'gi|{}|'.format(gi)
-
-                output_line = line.replace(data[2], rep).replace(data[0], fst)
+                output_line = line.replace(data[0], fst)
 
                 if edit_distance >= 0:
 
@@ -120,4 +118,8 @@ def update_sam(infile: Path, outfile: Path):
                     rep = '{}\tNM:i:{}'.format(data[12], dvalue)
                     output_line = output_line.replace(data[12], rep)
 
-            output.write(output_line)
+                output.write(output_line)
+
+            else:
+
+                output.write(line)

@@ -7,7 +7,7 @@ from functools import partial
 from pathlib import Path
 from multiprocessing import cpu_count
 from typing import List, Tuple, Union
-from utilities import logtime, annotated_to_fastq, fastq_to_fasta, sam_to_fasta
+from utilities import logtime, annotated_to_fastq, fastq_to_fasta, sam_to_fasta, user_msg
 from Bio import SeqIO
 from taxonomy_lookup import taxonomy_lookup
 from table_generator import table_generator
@@ -89,7 +89,7 @@ def snap_unmatched(infile: Path, workdir: Path, tempdir: Path,
                             '-o', tmp_sam, '-t', cores, '-x', '-f', '-h', 250,
                             '-d', edit_distance, '-n', 25)
 
-            subprocess.check_call([str(arg) for arg in snap_cmd])
+            subprocess.check_call([str(arg) for arg in snap_cmd if arg])
 
             update_sam.compare_sam(tmp_sam, prev_sam)
             tmp_fastq.write_text(annotated_to_fastq(prev_sam))
@@ -219,7 +219,12 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 def extract_headers(parentfile: Path, queryfile: Path, output: Path):
 
     with queryfile.open('r') as query:
-        headers = set(line.split()[0] for line in query)
+        headers = set()
+        for line in query:
+            try:
+                headers.add(line.split()[0])
+            except IndexError:
+                pass  # Skip empty lines
 
     with parentfile.open('r') as parent, output.open('w') as out:
         for rec in SeqIO.parse(parent, 'fastq'):

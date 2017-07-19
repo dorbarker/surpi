@@ -67,9 +67,9 @@ def annotated_to_fastq(annotated: Path) -> str:
                         'tenth': split_line[9],
                         'eleventh': split_line[10]}
 
-        if line[2] == '*':
+        if split_line[2] == '*':
 
-            rec = '@{fst}\n{tenth}\n+{fst}\n{eleventh}\n'
+            rec = '@{fst}\n{tenth}\n+{fst}\n{eleventh}'
 
             return rec.format(**replacements)
 
@@ -77,7 +77,7 @@ def annotated_to_fastq(annotated: Path) -> str:
 
     fastq_lines = (fastq(line) for line in lines if not line.startswith('@'))
 
-    return '\n'.join(filter(None, fastq_lines))
+    return '\n'.join(filter(None, fastq_lines)) + '\n'
 
 def fastq_to_fasta(fastq_path: Path, fasta_path: Path) -> None:
     '''Reads a FASTQ file located at fastq_path and writes
