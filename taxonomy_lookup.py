@@ -43,6 +43,8 @@ def query_dbs(db_dir: Path, seq_type: str, accs: List[str]) -> Dict[str, Dict[st
 
     taxonomy = {}  # type: Dict[str, Dict]
 
+    ranks = {'family', 'genus', 'species'}
+
     with acc_txid_db, names_db:
 
         for acc in accs:
@@ -51,7 +53,13 @@ def query_dbs(db_dir: Path, seq_type: str, accs: List[str]) -> Dict[str, Dict[st
 
             acc_txid_cur = acc_txid_db.execute(taxid_query, (acc, ))
 
-            taxid, *_ = acc_txid_cur.fetchone()  # one taxid per accession
+            try:
+
+                taxid, *_ = acc_txid_cur.fetchone()  # one taxid per accession
+
+            except TypeError:  # no taxid found
+
+                continue
 
             while taxid is not 1:
 
@@ -63,7 +71,19 @@ def query_dbs(db_dir: Path, seq_type: str, accs: List[str]) -> Dict[str, Dict[st
 
                 _, taxid, rank = nodes_cur.fetchone()
 
-                taxonomy[acc][rank] = name
+                if rank in ranks:
+                    taxonomy[acc][rank] = name
+
+                else:
+
+                    try:
+                        lineage = '{};'.format(name) + taxonomy[acc]['lineage']
+
+                    except KeyError:
+
+                        lineage = name
+
+                    taxonomy[acc]['lineage'] = lineage
 
     return taxonomy
 
@@ -72,6 +92,16 @@ def result_append(in_path: Path, out_path: Path,
     '''Appends taxonomy info line-by-line to the SAM file and writes the
     result to `out_sam_path`.
     '''
+
+    def format_tax_name(rank, accession):
+        try:
+            output = '{}--{}'.format(rank, taxonomy[accession][rank])
+
+        except KeyError:
+
+            output = '{}--no rank'.format(rank)
+
+        return output
 
     acc_column = 2 if file_type == 'sam' else 1
     ranks = ('family', 'genus', 'species', 'lineage')  # type: Sequence[str]
@@ -83,11 +113,14 @@ def result_append(in_path: Path, out_path: Path,
         for line in infile:
 
             sam_line = line.strip().split()
-            acc = line[acc_column]
 
-            ranks = ['{}--{}'.format(rnk, taxonomy[acc][rnk]) for rnk in ranks]
+            acc = sam_line[acc_column]
 
-            out.writerow(sam_line.extend(ranks))
+            ranks_formatted = [format_tax_name(rnk, acc) for rnk in ranks]
+
+            to_write = sam_line + ranks_formatted
+
+            out.writerow(to_write)
 
 def taxonomy_lookup(infile: Path, outfile: Path, db_dir: Path,
                     seq_type: str, file_type: str) -> None:

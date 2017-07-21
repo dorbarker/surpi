@@ -42,11 +42,11 @@ def separate_sam_lines(sam_file: Path) -> Tuple[List[str], List[str]]:
 
     with sam_file.open('r') as sam:
         for line in sam:
-            if not line.startswith('@'):
+            if not line.startswith('@') and not line.isspace():
 
                 split_line = line.split('\t')
 
-                if split_line[2] == '*':
+                if split_line[2] != '*':
                     matched.append(line)
                 else:
                     unmatched.append(line)
@@ -188,7 +188,8 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
         fasta = (throw_away / inputfile.stem).with_suffix('.fasta')
         fastq = fasta.with_suffix('.fastq')
         crop = fastq.with_suffix('.crop.fastq')
-        large_out = crop.with_suffix('.noLargeS.unmatched.sam')
+        large_out_sam = crop.with_suffix('.noLargeS.unmatched.sam')
+        large_out_fq = large_out_sam.with_suffix('.fastq')
         small_out = crop.with_suffix('.noSmallS_LargeS.sam')
 
         sam_to_fasta(inputfile, fasta)
@@ -198,17 +199,17 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 
         crop_reads(fastq, crop, 10, 75)
 
-        snap1 = ('snap', 'single', snap_large, crop, '-o', large_out,
+        snap1 = ('snap-aligner', 'single', snap_large, crop, '-o', large_out_sam,
                  '-t', cores, '-f', '-h', 250, '-d', 18, '-n', 200, '-F', 'u')
 
         subprocess.check_call([str(arg) for arg in snap1])
 
-        # inplace conversion of sam -> fastq
-        large_out.write_text(annotated_to_fastq(large_out))
-        large_out = large_out.with_suffix('.fastq')
+        # conversion of sam -> fastq
+        large_out_fq.write_text(annotated_to_fastq(large_out_sam))
 
-        snap2 = ('snap', 'single', snap_small, large_out, '-o', small_out,
-                 '-t', cores, '-h', 250, '-d', 18, '-n', 200, '-F', 'u')
+        snap2 = ('snap-aligner', 'single', snap_small, large_out_fq,
+                 '-o', small_out, '-t', cores, '-h', 250, '-d', 18, '-n', 200,
+                 '-F', 'u')
 
         subprocess.check_call([str(arg) for arg in snap2])
 
@@ -235,29 +236,43 @@ def lookup_taxonomy(matched_fastq: Path, matched_sam: Path,  annotated: Path,
                     workdir: Path, tax_db_dir: Path) -> Tuple[Path, Path, Path]:
     '''Looks up the taxonomy of annotated reads'''
 
+    def insert_seq_quals_to_line(line: List[str], seq_qual: List[str]) -> str:
+
+        line_tuple = (*line[:9], *seq_qual, *line[11:])
+        return '\t'.join(line_tuple)
+
     full_length_sam = matched_fastq.with_suffix('.sam')
 
     # sort sam
     with matched_sam.open('r') as sam:
-        lines = sam.readlines()
-        sorted_lines = sorted(lines, key=lambda x: x[0])
+        lines = []
+        for line in sam:
+
+            lines.append(line.strip().split())
+
+        sorted_lines = sorted(filter(None, lines), key=lambda x: x[0])
+        #lines = sam.readlines()
+        #sorted_lines = sorted(lines, key=lambda x: x.split()[0])
 
     # may need to double-check sequence sorting here
     with matched_fastq.open('r') as fastq:
 
-        seq_quals = []
+        fastq_ids, seq_quals = [], []
         for rec in SeqIO.parse(fastq, 'fastq'):
-            fastq_lines = rec.splitlines()
-            seq_quals.append([fastq_lines[1], fastq_lines[3]])
+
+            fastq_ids.append(rec.id)
+
+            fastq_lines = rec.format('fastq').splitlines()
+            seq_quals.append((fastq_lines[1], fastq_lines[3]))
+
+    # sort seq_quals by their fastq sequence name
+    _,  seq_quals = zip(*sorted(zip(fastq_ids, seq_quals)))
 
     # paste
-    with full_length_sam.open('w') as out_sam:
+    lines_to_write = (insert_seq_quals_to_line(line, seq_qual)
+                      for line, seq_qual in zip(sorted_lines, seq_quals))
 
-        for line, qual  in zip(sorted_lines, seq_quals):
-
-            to_write = line[:9] + qual + line[11:] + ['\n']
-
-            out_sam.write('\t'.join(to_write))
+    full_length_sam.write_text('\n'.join(lines_to_write))
 
     taxonomy_lookup(infile=full_length_sam,
                     outfile=annotated,
@@ -353,22 +368,22 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
     matched = workdir / basef.with_suffix('.NT.snap.matched.sam')
     unmatched = workdir / basef.with_suffix('.NT.snap.unmatched.sam')
 
-    cutadapt_fastq = workdir / basef.with_suffix('.cutadapt.fastq')
-
-    snap_sam = snap_unmatched(subtracted, workdir, temp_dir,
-                              snap_db_dir, edit_distance, cores)
-
-    matched_lines, unmatched_lines = separate_sam_lines(snap_sam)
-
-    write_sam(matched_lines, matched)
-    write_sam(unmatched_lines, unmatched)
-
     fulllength_unmatched_fastq = unmatched.with_suffix('.fulllength.fastq')
     fulllength_matched_fastq = matched.with_suffix('.fulllength.fastq')
 
-    extract_headers(cutadapt_fastq, matched, fulllength_matched_fastq)
+    cutadapt_fastq = workdir / basef.with_suffix('.cutadapt.fastq')
 
-    extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
+    #snap_sam = snap_unmatched(subtracted, workdir, temp_dir,
+    #                          snap_db_dir, edit_distance, cores)
+
+    #matched_lines, unmatched_lines = separate_sam_lines(snap_sam)
+
+    #write_sam(matched_lines, matched)
+    #write_sam(unmatched_lines, unmatched)
+
+    #extract_headers(cutadapt_fastq, matched, fulllength_matched_fastq)
+
+    #extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
 
     viruses, bacteria, euks = lookup_taxonomy(fulllength_matched_fastq, matched,
                                               annotated, workdir, tax_db_dir)

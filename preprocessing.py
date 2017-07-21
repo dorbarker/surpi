@@ -89,7 +89,7 @@ def crop_reads(infile: Path, outfile: Path, start: int, length: int) -> None:
         lines = [line.strip() if idx % 2 is 1 else line.strip()[strt:end]
                  for idx, line in enumerate(reads.readlines(), 1)]
 
-    outfile.write_text('\n'.join(lines))
+    outfile.write_text('\n'.join(lines) + '\n')
 
 def dust(infile: Path, dusted: Path) -> None:
     '''DUST mask infile and write it to `dusted`.fastq'''
