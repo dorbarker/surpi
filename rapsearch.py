@@ -202,7 +202,7 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
     contigs = filter_taxonomy('^contig', nr_output)
     contig_tax.write_text('\n'.join(contigs))
 
-    with ProcessPoolExector(max_workers=8) as ppe:
+    with ProcessPoolExecutor(max_workers=8) as ppe:
 
         for outtype in ('Accession', 'Species', 'Genus', 'Family'):
 
@@ -239,7 +239,7 @@ def rapsearch_nr(snap_unmatched: Path, workdir: Path, abyss_output: Path,
     virus_tax.write_text('\n'.join(virus))
     novir_tax.write_text('\n'.join(novir))
 
-    with ProcessPoolExector(max_workers=5) as ppe:
+    with ProcessPoolExecutor(max_workers=5) as ppe:
 
         for outtype in ('Accession', 'Species', 'Genus', 'Family'):
 

@@ -382,9 +382,11 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
     write_sam(matched_lines, matched)
     write_sam(unmatched_lines, unmatched)
 
-    extract_headers(cutadapt_fastq, matched, fulllength_matched_fastq)
+    with ProcessPoolExecutor(max_workers=2) as ppe1:
 
-    extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
+        ppe1.submit(extract_headers, cutadapt_fastq, matched, fulllength_matched_fastq)
+
+        ppe2.submit(extract_headers, cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
 
     viruses, bacteria, euks = lookup_taxonomy(fulllength_matched_fastq, matched,
                                               annotated, workdir, tax_db_dir)
@@ -395,9 +397,9 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
     ribo_snap(euks, 'EUK', cores, ribo_dir, temp_dir)
 
     # Long running, but low-memory, so parallel process
-    with ProcessPoolExector(max_workers=4) as ppe:
+    with ProcessPoolExecutor(max_workers=4) as ppe2:
         for outtype in ('Accession', 'Genus', 'Species', 'Family'):
-            ppe.submit(table_generator, 'SNAP', outtype, viruses)
+            ppe2.submit(table_generator, 'SNAP', outtype, viruses)
 
     if comprehensive:
 
