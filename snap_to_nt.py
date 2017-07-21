@@ -3,6 +3,7 @@
 import argparse
 import subprocess
 import tempfile
+from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 from pathlib import Path
 from multiprocessing import cpu_count
@@ -160,17 +161,15 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
         '''
 
         with riboremoved.open('r') as noribo:
-            headers = [line.split()[0] for line in noribo]
+            headers = set(line.split()[0] for line in noribo)
 
-        with infile.open('r') as inf, outfile.open('w') as output:
+        with infile.open('r') as inf:
+            lines = [line.strip() for line in inf if line.split()[0] in headers]
 
-            for line in inf:
-
-                if line.split()[0] in headers:
-                    output.write(line)
+        outfile.write_text('\n'.join(lines))
 
     noribo = inputfile.with_suffix('.noribo.annotated')
-
+    print(inputfile)
     if mode == 'BAC':
 
         snap_large = ribo_dir / '23s.fa.snap_index'
@@ -185,6 +184,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
     with tempfile.TemporaryDirectory(dir=str(tempdir)) as ephemeral:
 
         throw_away = Path(ephemeral)
+        throw_away = Path(tempdir)  # diag
         fasta = (throw_away / inputfile.stem).with_suffix('.fasta')
         fastq = fasta.with_suffix('.fastq')
         crop = fastq.with_suffix('.crop.fastq')
@@ -215,6 +215,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 
         extract_sam_from_sam(inputfile, noribo, small_out)
 
+    print('generating table', noribo)
     table_generator('SNAP', 'Genus', noribo)
 
 def extract_headers(parentfile: Path, queryfile: Path, output: Path):
@@ -373,17 +374,17 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
 
     cutadapt_fastq = workdir / basef.with_suffix('.cutadapt.fastq')
 
-    #snap_sam = snap_unmatched(subtracted, workdir, temp_dir,
-    #                          snap_db_dir, edit_distance, cores)
+    snap_sam = snap_unmatched(subtracted, workdir, temp_dir,
+                              snap_db_dir, edit_distance, cores)
 
-    #matched_lines, unmatched_lines = separate_sam_lines(snap_sam)
+    matched_lines, unmatched_lines = separate_sam_lines(snap_sam)
 
-    #write_sam(matched_lines, matched)
-    #write_sam(unmatched_lines, unmatched)
+    write_sam(matched_lines, matched)
+    write_sam(unmatched_lines, unmatched)
 
-    #extract_headers(cutadapt_fastq, matched, fulllength_matched_fastq)
+    extract_headers(cutadapt_fastq, matched, fulllength_matched_fastq)
 
-    #extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
+    extract_headers(cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
 
     viruses, bacteria, euks = lookup_taxonomy(fulllength_matched_fastq, matched,
                                               annotated, workdir, tax_db_dir)
@@ -393,9 +394,10 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
     ribo_snap(bacteria, 'BAC', cores, ribo_dir, temp_dir)
     ribo_snap(euks, 'EUK', cores, ribo_dir, temp_dir)
 
-    for outtype in ('Accession', 'Genus', 'Species', 'Family'):
-
-        table_generator('SNAP', outtype, viruses)
+    # Long running, but low-memory, so parallel process
+    with ProcessPoolExector(max_workers=4) as ppe:
+        for outtype in ('Accession', 'Genus', 'Species', 'Family'):
+            ppe.submit(table_generator, 'SNAP', outtype, viruses)
 
     if comprehensive:
 

@@ -1,5 +1,6 @@
 import re
 import csv
+from operator import itemgetter
 from pathlib import Path
 from typing import List
 
@@ -7,11 +8,15 @@ def create_tab_delimited_table(file_type: str, annotated: Path) -> List[List[str
 
     def extract_pattern(pattern: str, to_search: str) -> str:
 
-        pattern_ = '{}--(.*)\t'.format(pattern)
+        match_slice = len(pattern) + 2
+        split_line = to_search.split('\t')
+        contains_pattern = [pattern in elem for elem in split_line]
 
-        search_result = re.search(pattern_, to_search)
-
-        return search_result.groups()[0] if search_result else ''
+        try:
+            match = split_line[contains_pattern.index(True)]
+            return match[match_slice:]
+        except IndexError:
+            return 'no rank'
 
     table = []
 
@@ -44,7 +49,7 @@ def extract_barcodes(table: List[List[str]]) -> List[str]:
 
         header = line[0]
 
-        barcode, *_ = header.translate(tr).split()
+        _, barcode, *_ = header.translate(tr).split()
 
         return barcode
 
@@ -64,10 +69,10 @@ def generate_table(mode: str, barcodes: List[str],
     headers = ['Accession', 'Species', 'Genus', 'Family', '@=contigbarcode']
     idx = headers.index(mode)
 
-    output_table = sorted([row[idx:] for row in table], key=lambda x: x[0])
 
+    output_table = sorted([row[idx:] for row in table], key=itemgetter(0))
     # uniq.column
-    uniq_column = [row[idx] for row in table]
+    uniq_column = set(row[idx] for row in table)
 
     output_table.insert(0, headers[idx:])
 
@@ -78,22 +83,22 @@ def generate_table(mode: str, barcodes: List[str],
 
         # bar$f.$inputfile.gi.output
         bar = 'bar{}'.format(barcode)
-        output = [bar] + [count_bar(x, matching_rows) for x in uniq_column]
+        output = {name: count_bar(name, matching_rows) for name in uniq_column}
+        output[headers[idx]] = bar
 
-        # paste
-        for row, bar in zip(output_table, output):
-            row.append(bar)
+        for row in output_table:
+            key = row[0]
+            row.append(output[key])
 
     return output_table
 
 def write_table(table: List[List[str]], outpath: Path) -> None:
 
-    with outpath.open('w') as outfile:
+    joined_rows = ('\t'.join(row) for row in table)
 
-        out = csv.writer(outfile, delimiter='\t', quoting=csv.QUOTE_NONE)
+    to_write = '\n'.join(joined_rows)
 
-        for row in table:
-            out.writerow(row)
+    outpath.write_text(to_write)
 
 def table_generator(file_type: str, mode: str, annotated: Path) -> None:
 

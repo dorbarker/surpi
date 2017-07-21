@@ -3,6 +3,7 @@
 import subprocess
 import re
 import tempfile
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from typing import List
 
@@ -201,11 +202,13 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
     contigs = filter_taxonomy('^contig', nr_output)
     contig_tax.write_text('\n'.join(contigs))
 
-    for outtype in ('Accession', 'Species', 'Genus', 'Family'):
+    with ProcessPoolExector(max_workers=8) as ppe:
 
-        table_generator('RAP', outtype, contig_tax)
+        for outtype in ('Accession', 'Species', 'Genus', 'Family'):
 
-        table_generator('RAP', outtype, virus_tax)
+            ppe.submit(table_generator, 'RAP', outtype, contig_tax)
+
+            ppe.submit(table_generator, 'RAP', outtype, virus_tax)
 
     coverage_map(snap_match_annot, virus_tax, evalue, cores)
 
@@ -236,9 +239,10 @@ def rapsearch_nr(snap_unmatched: Path, workdir: Path, abyss_output: Path,
     virus_tax.write_text('\n'.join(virus))
     novir_tax.write_text('\n'.join(novir))
 
+    with ProcessPoolExector(max_workers=5) as ppe:
 
-    for outtype in ('Accession', 'Species', 'Genus', 'Family'):
+        for outtype in ('Accession', 'Species', 'Genus', 'Family'):
 
-        table_generator('RAP', outtype, virus_tax)
+            ppe.submit(table_generator, 'RAP', outtype, virus_tax)
 
-    table_generator('RAP', 'Genus', novir_tax)
+        ppe.submit(table_generator, 'RAP', 'Genus', novir_tax)
