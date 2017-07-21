@@ -169,7 +169,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
         outfile.write_text('\n'.join(lines))
 
     noribo = inputfile.with_suffix('.noribo.annotated')
-    print(inputfile)
+
     if mode == 'BAC':
 
         snap_large = ribo_dir / '23s.fa.snap_index'
@@ -184,7 +184,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
     with tempfile.TemporaryDirectory(dir=str(tempdir)) as ephemeral:
 
         throw_away = Path(ephemeral)
-        throw_away = Path(tempdir)  # diag
+
         fasta = (throw_away / inputfile.stem).with_suffix('.fasta')
         fastq = fasta.with_suffix('.fastq')
         crop = fastq.with_suffix('.crop.fastq')
@@ -215,7 +215,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
 
         extract_sam_from_sam(inputfile, noribo, small_out)
 
-    print('generating table', noribo)
+
     table_generator('SNAP', 'Genus', noribo)
 
 def extract_headers(parentfile: Path, queryfile: Path, output: Path):
@@ -393,8 +393,15 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
 
     viruses_fastq = viruses.with_suffix('.fastq')
 
-    ribo_snap(bacteria, 'BAC', cores, ribo_dir, temp_dir)
-    ribo_snap(euks, 'EUK', cores, ribo_dir, temp_dir)
+    try:
+        ribo_snap(bacteria, 'BAC', cores, ribo_dir, temp_dir)
+    except subprocess.CalledProcessError:
+        user_msg('No bacterial reads to align')
+
+    try:
+        ribo_snap(euks, 'EUK', cores, ribo_dir, temp_dir)
+    except subprocess.CalledProcessError:
+        user_msg('No eukaryotic reads to align')
 
     # Long running, but low-memory, so parallel process
     with ProcessPoolExecutor(max_workers=4) as ppe2:
