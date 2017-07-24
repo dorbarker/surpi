@@ -10,7 +10,11 @@ from typing import List
 from Bio import SeqIO
 from utilities import concatenate
 from taxonomy_lookup import taxonomy_lookup
-from table_generator import table_generator
+from table_generator import table_generator,
+                            create_tab_delimited_table,
+                            extract_barcodes
+from coverage_generator import coverage_generator
+
 def run_rapsearch(query: Path, output: Path, database: Path, cores: int,
                   cutoff: int, fast: bool, log: Path) -> None:
     '''Runs RAPSearch with some default arguments overriden.'''
@@ -89,9 +93,7 @@ def filter_taxonomy(pattern: str, annotated: Path) -> List[str]:
 
 def coverage_map(snap_matched: Path, annotated: Path,
                  evalue: str, cores: int) -> None:
-    '''Removes "@" from taxonomy annotation
-    and runs coverage_generator_bp.sh
-    '''
+    '''Removes "@" from taxonomy annotation and runs coverage_generator()'''
 
     name = annotated.stem.split('.')[0]
 
@@ -102,10 +104,7 @@ def coverage_map(snap_matched: Path, annotated: Path,
         inc_bar.seek(0)
         inc_bar_name = Path(inc_bar.name)
 
-        cov_gen = [str(x) for x in ('coverage_generator_bp.sh', snap_matched,
-                                    inc_bar_name, evalue, cores, 10, 1, name)]
-
-        subprocess.check_call(cov_gen)
+        coverage_generator(snap_matched, inc_bar_name, evalue, cores, 10, 1)
 
     inc_bar_name.unlink()
 
