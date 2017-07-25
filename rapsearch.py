@@ -10,8 +10,8 @@ from typing import List
 from Bio import SeqIO
 from utilities import concatenate
 from taxonomy_lookup import taxonomy_lookup
-from table_generator import table_generator,
-                            create_tab_delimited_table,
+from table_generator import table_generator,\
+                            create_tab_delimited_table,\
                             extract_barcodes
 from coverage_generator import coverage_generator
 

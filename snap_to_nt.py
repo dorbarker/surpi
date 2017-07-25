@@ -312,7 +312,7 @@ def extract_to_fast(fastq: Path, fasta: Path, output: Path, tempdir: Path):
 
         cmd = ('seqtk', 'subseq', str(parent), str(header_file))
 
-        output = subprocess.check_output(cmd)
+        output = subprocess.check_output(cmd, universal_newlines=True)
 
         outfile.write_text(output)
 
@@ -360,8 +360,9 @@ def extract_to_fast(fastq: Path, fasta: Path, output: Path, tempdir: Path):
 
         subseq(uniq, fasta, output)
 
-def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, ribo_dir: Path, cores: int,
-         edit_distance: int, cache_reset, comprehensive: bool, temp_dir: Path):
+def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path,
+         ribo_dir: Path, cores: int, edit_distance: int, cache_reset,
+         comprehensive: bool, temp_dir: Path):
 
     basef = Path(subtracted.stem)
     annotated = workdir / basef.with_suffix('.annotated')
@@ -386,7 +387,7 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path, r
 
         ppe1.submit(extract_headers, cutadapt_fastq, matched, fulllength_matched_fastq)
 
-        ppe2.submit(extract_headers, cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
+        ppe1.submit(extract_headers, cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
 
     viruses, bacteria, euks = lookup_taxonomy(fulllength_matched_fastq, matched,
                                               annotated, workdir, tax_db_dir)
