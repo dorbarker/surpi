@@ -93,7 +93,8 @@ def snap_unmatched(infile: Path, workdir: Path, tempdir: Path,
             subprocess.check_call([str(arg) for arg in snap_cmd if arg])
 
             update_sam.compare_sam(tmp_sam, prev_sam)
-            tmp_fastq.write_text(annotated_to_fastq(prev_sam))
+            lines =  annotated_to_fastq(prev_sam, True) + annotated_to_fastq(prev_sam, False)
+            tmp_fastq.write_text(lines)
 
             first_pass_done = True
 
@@ -205,7 +206,7 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
         subprocess.check_call([str(arg) for arg in snap1])
 
         # conversion of sam -> fastq
-        large_out_fq.write_text(annotated_to_fastq(large_out_sam))
+        large_out_fq.write_text(annotated_to_fastq(large_out_sam, False))
 
         snap2 = ('snap-aligner', 'single', snap_small, large_out_fq,
                  '-o', small_out, '-t', cores, '-h', 250, '-d', 18, '-n', 200,
@@ -411,7 +412,7 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path,
 
     if comprehensive:
 
-        viruses_fastq.write_text(annotated_to_fastq(viruses))
+        viruses_fastq.write_text(annotated_to_fastq(viruses, True))
 
         # output of this given to denovo assembly and RAPSearch
         extract_to_fast(fulllength_unmatched_fastq,

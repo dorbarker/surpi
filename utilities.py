@@ -6,6 +6,7 @@ import functools
 import fileinput
 from pathlib import Path
 import subprocess
+import operator
 
 from Bio import SeqIO
 
@@ -50,24 +51,26 @@ def run_shell(cmd, **kwargs) -> str:
 def concatenate(*files, output):
     '''Concatenate files together and write them to output'''
 
-    with output.open('w') as out, fileinput.input(files) as infiles:
+    files_ = [str(filename) for filename in files]
+    with output.open('w') as out, fileinput.input(files_) as infiles:
 
         for line in infiles:
             out.write(line)
 
-def annotated_to_fastq(annotated: Path) -> str:
+def annotated_to_fastq(annotated: Path, matches: bool) -> str:
     '''Converts and annotation Path to FASTQ format as a str.'''
 
     def fastq(line: str):
         '''Reformats a SAM line as FASTQ'''
 
+        compare_match = operator.ne if matches else operator.eq
         split_line = line.split()
 
         replacements = {'fst': split_line[0],
                         'tenth': split_line[9],
                         'eleventh': split_line[10]}
 
-        if split_line[2] == '*':
+        if compare_match(split_line[2], '*'):
 
             rec = '@{fst}\n{tenth}\n+{fst}\n{eleventh}'
 

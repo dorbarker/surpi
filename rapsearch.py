@@ -177,7 +177,7 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
     log = vir_output.with_suffix('.virlog')
     virus_tax = nr_output.with_suffix('.viruses.annotated')
     contig_tax = nr_output.with_suffix('.NRcontigs.annotated')
-    contigs_nt_unmatched_fasta = m8.with_suffix('Contigs.NTunmatched.fasta')
+    contigs_nt_unmatched_fasta = m8.with_suffix('.Contigs.NTunmatched.fasta')
     not_in_nr_annot = m8.with_suffix('.notNR.annotated')
 
     rapsearch_shared(query, vir_output, vir_database, tax_db_dir,

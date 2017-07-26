@@ -74,6 +74,6 @@ def host_subtract(preprocessed: Path, snap_db_dir: Path, edit_distance: int,
 
             to_subtract = temp_output
 
-        subtracted_fastq.write_text(annotated_to_fastq(to_subtract))
+        subtracted_fastq.write_text(annotated_to_fastq(to_subtract, False))
 
     return subtracted_fastq
