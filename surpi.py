@@ -393,7 +393,7 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, edit_distance: int,
     tax_db_dir = reference / 'taxonomy'
     snap_db_dir = reference / snap_db
 
-    subtracted_fastq = host_subtract(preprocessed, host_snap_dir,
+    subtracted_fastq = host_subtract(sample, host_snap_dir,
                                      edit_distance, temp_dir, cores)
 
     viruses, viruses_fastq, uniqunmatched = snap(subtracted_fastq, workdir,
