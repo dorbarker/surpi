@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import List
 
 from Bio import SeqIO
-from utilities import concatenate
+from utilities import concatenate, logtime
 from taxonomy_lookup import taxonomy_lookup
 from table_generator import table_generator,\
                             create_tab_delimited_table,\
@@ -16,7 +16,7 @@ from table_generator import table_generator,\
 from coverage_generator import coverage_generator
 
 def run_rapsearch(query: Path, output: Path, database: Path, cores: int,
-                  cutoff: int, fast: bool, log: Path) -> None:
+                  cutoff: float, fast: bool, log: Path) -> None:
     '''Runs RAPSearch with some default arguments overriden.'''
 
     fast_mode = 'T' if fast else 'F'
@@ -162,9 +162,10 @@ def vir_nr_difference(vir_annot: List[str], nr_annot: List[str]) -> List[str]:
 
     return not_in_nr
 
+@logtime('RAPSearch against viral database')
 def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
                     nr_database: Path, vir_cutoff: int, nr_cutoff: int,
-                    fast: bool, abyss_output: Path, tax_db_dir: Path,
+                    abyss_output: Path, tax_db_dir: Path,
                     snap_match_annot: Path, evalue: str, cores: int) -> None:
     '''Performs a RAPSearch first against a specialized viral database,
     and then against the NCBI NR database.
@@ -181,7 +182,7 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
     not_in_nr_annot = m8.with_suffix('.notNR.annotated')
 
     rapsearch_shared(query, vir_output, vir_database, tax_db_dir,
-                     cores, vir_cutoff, fast, log)
+                     cores, vir_cutoff, False, log)
 
     table_generator('RAP', 'Genus', vir_output.with_suffix('.annotated'))
 
@@ -191,7 +192,7 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
                                                  doesn't exist"
 
     rapsearch_shared(contigs_nt_unmatched_fasta, nr_output, nr_database,
-                     tax_db_dir, cores, nr_cutoff, fast,
+                     tax_db_dir, cores, nr_cutoff, True,
                      log.with_suffix('.nrlog'))
 
     viruses = filter_taxonomy('Viruses', nr_output)
@@ -216,6 +217,7 @@ def rapsearch_viral(query: Path, workdir: Path, vir_database: Path,
 
     table_generator('RAP', 'Genus', not_in_nr_annot)
 
+@logtime('RAPSearch against NR')
 def rapsearch_nr(snap_unmatched: Path, workdir: Path, abyss_output: Path,
                  rap_database: Path, tax_db_dir: Path, cutoff: int, fast: bool,
                  cores: int) -> None:

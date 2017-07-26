@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 
 # system imports
-import argparse
+import json
 import subprocess
 import sys
+import textwrap
+from argparse import ArgumentParser, RawTextHelpFormatter, Namespace
 from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Dict
@@ -17,15 +19,14 @@ from assembly import assemble
 from rapsearch import rapsearch_viral, rapsearch_nr
 
 def arguments():
+    '''Reads commandline arguments and parses them.
 
-    parser = argparse.ArgumentParser()
+    If --config is set, arguments will be read from the given config file
+    '''
 
-    parser.add_argument('--input-type',
-                        choices=('fasta', 'fastq'),
-                        default='fastq',
-                        help='Input filetype [fastq]')
+    parser = ArgumentParser(formatter_class=RawTextHelpFormatter)
 
-    parser.add_argument('--quality-mode',
+    parser.add_argument('--fastq-type',
                         choices=('illumina', 'sanger'),
                         default='sanger',
                         help='Quality score mode [sanger]')
@@ -36,26 +37,32 @@ def arguments():
                         default='truseq',
                         help='Adapter set to use [truseq]')
 
-    # TODO: fix formatting
+
     parser.add_argument('--verify-fastq',
                         choices=(0, 1, 2, 3),
                         default=1,
-                        help='''
+                        help=textwrap.dedent('''\
                         0 = skip fastq validation
                         1 = validate fastqs; quit on fail
-                        2 = validate fastqs; check for unique names; quit on fail
-                        3 = validate fastqs; check for unique names; do not quit on failure
+                        2 = validate fastqs; ensure unique names; quit on fail
+                        3 = validate fastqs; ensure unique name; warn on fail
                         [1]
-                        ''')
+                        '''))
 
-    parser.add_argument('--run-mode',
-                        choices=('comprehensive', 'fast'),
-                        default='comprehensive',
-                        help='''
-                        Comprehensive mode allows SNAP to NT -> denovo contig assembly -> RAPSearch to Viral proteins or NR
-                        Fast mode allows SNAP to curated FAST databases
+    parser.add_argument('--fast',
+                        action='store_false',
+                        dest='comprehensive',
+                        help=textwrap.dedent('''
+                        Run in fast mode instead of comprehensive mode.
+                        Comprehensive mode runs:
+                            1. SNAP to NT
+                            2. de novo contig assembly
+                            3. RAPSearch to viral proteins or NCBI NR
+
+                        Fast mode will SNAP align to curated bacterial
+                        and viral databases
                         [comprehensive]
-                        ''')
+                        '''))
 
     parser.add_argument('--skip-preprocess',
                         action='store_true',
@@ -64,30 +71,29 @@ def arguments():
     parser.add_argument('--length-cutoff',
                         type=int,
                         default=50,
-                        help='Discard any post-trimming sequence less than this length [50]')
+                        help=textwrap.dedent('''\
+                                Discard any post-trimming sequence
+                                less than this length [50]'''))
 
     parser.add_argument('--crop-start',
                         type=int,
                         default=10,
-                        help='Prior to SNAP alignment, cropping start position [10]')
+                        help='Start position for read cropping [10]')
 
     parser.add_argument('--crop-length',
                         type=int,
                         default=75,
-                        help='Prior to SNP alignment, length to crop after start position [75]')
+                        help='Length to crop after start position [75]')
 
     parser.add_argument('--quality-cutoff',
                         type=int,
                         default=18,
-                        help='Quality cutoff passed to cutadapt\' -q parameter [18]')
+                        help='Quality cutoff for cutadapt [18]')
 
     parser.add_argument('--edit-distance',
                         type=int,
                         default=12,
-                        help='SNAP edit distance for computational subtraction of host genome [12]')
-
-
-    # snap_nt interator option only has one choice: 'inline' and so is omitted here
+                        help='SNAP edit distance for host genome [12]')
 
     parser.add_argument('--rapsearch-method',
                         choices=('viral', 'nr'),
@@ -95,13 +101,25 @@ def arguments():
                         help='RAPSearch database method to use [viral]')
 
     parser.add_argument('--rapsearch-cutoff',
+                        type=float,
                         default='1',
-                        help='E-value cutoff for RAPSearch. Will parse \
-                              notation such as "1e+1" [1]')
+                        help='E-value cutoff for RAPSearch [1]')
 
     parser.add_argument('--fast-rapsearch',
                         action='store_true',
-                        help='Yields a 10-30x speed increase at the cost of sensitivity [off]')
+                        help=textwrap.dedent('''\
+                                Run RAPSearch much faster (10 to 30-fold) at
+                                the cost of sensitivity [off]'''))
+
+    parser.add_argument('--vir-cutoff',
+                        type=float,
+                        default=1.0,
+                        help='Virus cutoff for RAPSearch [1]')
+
+    parser.add_argument('--nr-cutoff',
+                        type=float,
+                        default=1.0,
+                        help='NR cutoff for RAPSearch [1]')
 
     parser.add_argument('--abyss-kmer',
                         type=int,
@@ -110,56 +128,13 @@ def arguments():
 
     parser.add_argument('--ignore-barcodes',
                         action='store_true',
-                        help='Assemble all barcodes together into a single assembly [off]')
+                        help='Assemble all barcodes into a single assembly [off]')
 
-    parser.add_argument('--blastn-evalue',
+    parser.add_argument('--evalue',
                         default='1e-15',
-                        help='E-value cutoff for BLASTn/ Will parse notation \
-                             such as "1e-15" [1e-15]')
-
-    # Reference Data
-
-    parser.add_argument('--snap-subtract-dir',
-                        default='reference/hg19',
-                        help='Directory containing the SNAP-indexed \
-                             database of the host genome for the \
-                             subtraction phase. SURPI will subtract \
-                             all SNAP databases found in this directory. \
-                             [reference/hg19]')
-
-    parser.add_argument('--snap-comprehensive-dir',
-                        default='reference/COMP_SNAP',
-                        help='Directory for SNAP-indexed databases of \
-                             NCBI NT. Directory must contain *only* SNAP \
-                             indexed databases [reference/COMP_SNAP]')
-
-    parser.add_argument('--snap-fast-dir',
-                        default='reference/FAST_SNAP',
-                        help='Directory for FAST-mode SNAP databases \
-                             [reference/FAST_SNAP]')
-
-    # update if create_taxonomy_db.sh changes
-    parser.add_argument('--tax-ref-dir',
-                        default='reference/taxonomy',
-                        help='Directory containing 3 SQLite databases \
-                             created by "create_taxonomy_db.sh" \
-                             [reference/taxonomy]')
-
-    parser.add_argument('--rapsearch-viral',
-                        default='reference/RAPSearch/rapsearch_viral_db',
-                        help='Directory containing the RAPSearch \
-                             viral database \
-                             [reference/RAPSearch/rapsearch_viral_db]')
-
-    parser.add_argument('--rapsearch-nr',
-                        default='reference/RAPSearch/rapsearch_nr_db',
-                        help='Directory containing the RAPSearch NCBI NR \
-                             database [reference/RAPSearch/rapsearch_nr_db')
-
-    parser.add_argument('--snap-riboclean',
-                        default='reference/RiboClean_SNAP',
-                        help='SNAP RiboClean directory \
-                             [reference/RiboClean_SNAP]')
+                        help=textwrap.dedent('''\
+                              E-value cutoff for BLASTn.
+                              Will parse notation such as "1e-15" [1e-15]'''))
 
     parser.add_argument('--cores',
                         type=int,
@@ -167,16 +142,66 @@ def arguments():
                         help='CPU cores to use [{}]'.format(cpu_count()))
 
     parser.add_argument('--temp',
+                        type=Path,
                         default='/tmp/',
                         help='Temporary working directory [/tmp/]')
 
-    parser.add_argument('--cache-reset',
-                        type=int,
-                        default=0,
-                        help='dropcache if free RAM (GB) falls below this \
-                             value. If 0, then the cache is never reset [0]')
+    parser.add_argument('--config',
+                        type=Path,
+                        help='Config file [optional]')
 
-    return parser.parse_args()
+    parser.add_argument('reference',
+                        type=Path,
+                        help='Reference data directory')
+
+    parser.add_argument('workdir',
+                        type=Path,
+                        help='Location for working files and results')
+
+    parser.add_argument('sample',
+                        type=Path,
+                        help='Sample to analyze')
+
+    args = parser.parse_args()
+
+    ignore_args = set(('reference', 'workdir', 'sample', 'config'))
+    if args.config:
+
+        new_args = Namespace()
+        with args.config.open('r') as config_file:
+
+            data = json.load(config_file)
+
+            for key, value in data.items():
+
+                if key not in ignore_args:
+
+                    if value == 'True':
+                        new_value = True
+
+                    elif value == 'False':
+                        new_value = False
+
+                    else:
+                        new_value = type(getattr(args, key))(value)
+
+                    setattr(new_args, key, new_value)
+
+        new_args.reference = args.reference
+        new_args.workdir = args.workdir
+        new_args.sample = args.sample
+
+        args = new_args
+
+    new_config = (args.workdir / args.sample.name).with_suffix('.config')
+    with new_config.open('w') as config_file:
+
+        to_dump = {k: str(v) for k, v in args._get_kwargs()
+                   if k not in ignore_args}
+
+        json.dump(to_dump, config_file, indent=4)
+
+    return args
 
 def ensure_fastq(inputfile: Path, workdir: Path) -> Path:
     '''If mode is "fasta", convert inputfile to fastq.
@@ -184,11 +209,11 @@ def ensure_fastq(inputfile: Path, workdir: Path) -> Path:
     In either case, guarantee that file extension is ".fastq"
     '''
 
+    fq_name = workdir / inputfile.with_suffix('.fastq').name
 
     # FASTA
     if inputfile.suffix in ('.fasta', '.fas'):
 
-        fq_name = workdir / inputfile.with_suffix('.fastq').name
 
         cmd = ('fasta_to_fastq', str(inputfile))
 
@@ -212,36 +237,6 @@ def ensure_fastq(inputfile: Path, workdir: Path) -> Path:
             fq_name.symlink_to(inputfile)
 
     return fq_name
-
-def free_memory(cache_reset: int):
-
-    freemem = float(run_shell("free -g | awk 'NR==2{print $4}'"))
-
-    if freemem < cache_reset:
-        run_shell('dropcache')
-
-def get_memory_limit() -> int:
-    '''Return a usable memory limit in GB based on system RAM'''
-
-    cmd = ('grep', 'MemTotal', '/proc/meminfo')
-
-    meminfo = subprocess.check_output(cmd, universal_newlines=True)
-
-    total_memory = int(meminfo.split()[1])
-
-    if total_memory >= 500000000:
-
-        memory_limit = 200
-
-    elif total_memory >= 200000000:
-
-        memory_limit = 150
-
-    else:
-
-        memory_limit = 50
-
-    return memory_limit
 
 def check_program_versions() -> Dict[str, str]:
     '''Return the versions of each external dependency as a dict
@@ -363,14 +358,14 @@ def validate_fastqs(fastq_file, logfile, mode):
                 sys.exit(65)
 
 @logtime('Sample and DB Validation')
-def validation(inputfile: Path, workdir: Path, fastq_log: Path,
-               validation_mode: int, reference: Path,
-               comprehensive: bool) -> Path:
+def validation(inputfile: Path, workdir: Path, validation_mode: int,
+               reference: Path, comprehensive: bool) -> Path:
 
     snap_db = 'comp_snap' if comprehensive else 'fast_snap'
     snap_db_dir = reference / snap_db
     rapsearch_nr_db = reference / 'rapsearch' / 'rapsearch_nr'
     rapsearch_vir_db = reference / 'rapsearch' / 'rapsearch_viral'
+    fastq_log = workdir / 'fastq_validation.log'
 
     sample = ensure_fastq(inputfile, workdir)
 
@@ -383,12 +378,10 @@ def validation(inputfile: Path, workdir: Path, fastq_log: Path,
     return sample
 
 @logtime('Total Runtime')
-def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
-          quality_cutoff: int, length_cutoff: int, adapter_set: str,
-          crop_start: int, crop_length: int, edit_distance: int,
-          reference: Path, cache_reset, abyss_kmer: int, ignore_barcodes: bool,
+def surpi(sample: Path, workdir: Path, temp_dir: Path, edit_distance: int,
+          reference: Path, abyss_kmer: int, ignore_barcodes: bool,
           comprehensive: bool, rapsearch_mode: str, vir_cutoff: int,
-          nr_cutoff: int, fast: bool, evalue: str, cores: int) -> None:
+          nr_cutoff: int, rap_fast: bool, evalue: str, cores: int) -> None:
     '''Master function for SURPI pipeline'''
 
     snap_db = 'comp_snap' if comprehensive else 'fast_snap'
@@ -400,10 +393,6 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
     tax_db_dir = reference / 'taxonomy'
     snap_db_dir = reference / snap_db
 
-    preprocessed = preprocess(sample, workdir, temp_dir, adapter_set,
-                              fastq_type, quality_cutoff, length_cutoff,
-                              crop_start, crop_length)
-
     subtracted_fastq = host_subtract(preprocessed, host_snap_dir,
                                      edit_distance, temp_dir, cores)
 
@@ -413,23 +402,36 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, fastq_type: str,
                                                  edit_distance, cache_reset,
                                                  comprehensive, temp_dir)
 
-    assembled = assemble(viruses_fastq, uniqunmatched, workdir, temp_dir,
-                         sample, abyss_kmer, ignore_barcodes, cores)
+    if comprehensive:
 
-    if rapsearch_mode == 'viral':
-        rapsearch_viral(uniqunmatched, workdir, rapsearch_vir_db,
-                        rapsearch_nr_db, vir_cutoff, nr_cutoff, fast,
-                        assembled, tax_db_dir, viruses, evalue, cores)
-    else:
-        rapsearch_nr(uniqunmatched, workdir, assembled, rapsearch_nr_db,
-                     tax_db_dir, nr_cutoff, fast, cores)
+        assembled = assemble(viruses_fastq, uniqunmatched, workdir, temp_dir,
+                             sample, abyss_kmer, ignore_barcodes, cores)
+
+        if rapsearch_mode == 'viral':
+            rapsearch_viral(uniqunmatched, workdir, rapsearch_vir_db,
+                            rapsearch_nr_db, vir_cutoff, nr_cutoff,
+                            assembled, tax_db_dir, viruses, evalue, cores)
+        else:
+            rapsearch_nr(uniqunmatched, workdir, assembled, rapsearch_nr_db,
+                         tax_db_dir, nr_cutoff, rap_fast, cores)
 
 def main():
-    pass
-    #args = arguments()
-    # TODO add taxonomy DB verification
-    # TODO verification mode
 
+    args = arguments()
+
+    sample = validation(args.sample, args.workdir, args.verify_fastq,
+               args.reference, args.comprehensive)
+
+    if not args.skip_preprocess:
+        sample = preprocess(sample, args.workdir, args.temp, args.adapter_set,
+                            args.fastq_type, args.quality_cutoff,
+                            args.length_cutoff, args.crop_start,
+                            args.crop_length )
+
+    surpi(sample, args.workdir, args.temp, args.edit_distance, args.reference,
+          args.abyss_kmer, args.ignore_barcodes, args.comprehensive,
+          args.rapsearch_method, args.vir_cutoff, args.nr_cutoff,
+          args.fast_rapsearch, args.evalue, args.cores)
 
 if __name__ == '__main__':
     main()

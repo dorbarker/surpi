@@ -151,6 +151,7 @@ def separate_ranked_taxonomy(ranks: List[str], annotations: List[str],
 
     return result_file
 
+@logtime('SNAP to ribosome sequences')
 def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: Path):
     '''Runs SNAP to subtract `inputfile` reads from databases
     of bacterial and ribosomal reads
@@ -361,6 +362,7 @@ def extract_to_fast(fastq: Path, fasta: Path, output: Path, tempdir: Path):
 
         subseq(uniq, fasta, output)
 
+@logtime('SNAP alignment to NT and ribosome')
 def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path,
          ribo_dir: Path, cores: int, edit_distance: int, cache_reset,
          comprehensive: bool, temp_dir: Path):
