@@ -1,58 +1,125 @@
-#!/usr/bin/python
-#
-#	update_sam.py
-#       this script reannotates the SAM file based on the better hit identified in "compare_sam.py" 
-#
-#	Chiu Laboratory
-#	University of California, San Francisco
-#
-# Copyright (C) 2014 Charles Chiu - All Rights Reserved
-# SURPI has been released under a modified BSD license.
-# Please see license file for details.
+from pathlib import Path
 
-import sys
-import os
+def is_sam_header(line: str) -> bool:
+    '''If the line begins with "@" return True, else False'''
+    return line.startswith('@')
 
-def logHeader():
-	import os.path, sys, time
-	return "%s\t%s\t" % (time.strftime("%a %b %d %H:%M:%S %Z %Y"), os.path.basename(sys.argv[0]))
+def compare_sam(infile: Path, outfile: Path):
 
-usage = "update_sam.py <annotated SAM file> <outputFile>"
-if len(sys.argv) != 3:
-	print usage
-	sys.exit(0)
+    new_hits, existing_hits = 0, 0
+    total_edit_dist_new, total_edit_dist_existing = 0, 0
+    replacements = 0
+    sum_data = 0
 
-SAMfile1 = sys.argv[1]
-outputFile1 = sys.argv[2]
+    with infile.open('r') as annot, outfile.open('w') as output:
 
-file1 = open(SAMfile1, "r")
-outputFile = open(outputFile1, "w")
+        for line in annot:
 
-line1 = file1.readline()
+            data = line.split()
 
-while line1 != '':
-	data1 = line1.split()
-	if (data1[0][0]!="@"):
-		header = data1[0].split("|")
-		if (len(header)>=2): # these is a hit in header
-			dvalue=header[1]
-			gi=header[2]
-			edit_distance=int(data1[12].split(":")[2])
+            if is_sam_header(line):
 
-			line2a = line1.replace(data1[2], "gi|" + str(gi) + "|",1)
-			line2b = line2a.replace(data1[0], header[0],1)
-			if (edit_distance >= 0): # then there is already a hit in the SAM entry
-				line2c = line2b.replace(data1[13], "NM:i:" + str(dvalue))
-			else:
-				line2c = line2b.replace(data1[12], data1[12] + "\t" + "NM:i:" + str(dvalue),1)
-			outputFile.write(line2c)
-		else:
-			outputFile.write(line1)
-	else:
-		outputFile.write(line1)
-	line1 = file1.readline()
+                output.write(line)
+                continue
 
-file1.close()
-outputFile.close()
+            first_entry = data[0].split('|')
 
-print "%sRestored file %s in SAM format and copied to %s" % (logHeader(), SAMfile1, outputFile1)
+            edit_distance = int(data[12].split(':')[2])
+
+            try:
+                edit_distance_prev = int(first_entry[1])
+            except IndexError:
+                edit_distance_prev = 0
+
+            if edit_distance >= 0:
+
+                new_hits += 1
+                total_edit_dist_new += edit_distance
+
+                if len(first_entry) > 1:  # hit
+
+                    existing_hits += 1
+                    total_edit_dist_existing += edit_distance_prev
+
+                    if edit_distance <= edit_distance_prev:
+
+                        replacements += 1
+                        sum_data += edit_distance
+
+                        acc = data[2]
+
+                        original = '|{}|{}'.format(*first_entry[:2])
+                        rep = '|{}|{}'.format(edit_distance, acc)
+
+                        output_line = line.replace(original, rep, 1)
+
+                        output.write(output_line)
+
+                    else:
+
+                        sum_data += edit_distance_prev
+                        output_line = line
+
+                else:
+
+                    existing_hits += 1
+                    sum_data += edit_distance
+                    acc = data[2]
+
+                    rep = '{}|{}|{}'.format(data[0], edit_distance, acc)
+
+                    output_line = line.replace(data[0], rep, 1)
+
+                    replacements += 1
+
+            else:
+
+                output_line = line
+
+                if len(first_entry) > 1:
+
+                    existing_hits += 1
+
+                    sum_data += edit_distance_prev
+
+                    total_edit_dist_existing += edit_distance_prev
+
+            output.write(output_line)
+
+def update_sam(infile: Path, outfile: Path):
+
+    with infile.open('r') as annot, outfile.open('w') as output:
+
+        for line in annot:
+
+            if is_sam_header(line):
+
+                output.write(line)
+                continue
+
+            data = line.split()
+
+            header = data[0].split('|')
+
+            if len(header) > 1:
+
+                fst, dvalue, acc, *_ = header
+
+                edit_distance = int(data[12].split(':')[2])
+
+                output_line = line.replace(data[0], fst)
+
+                if edit_distance >= 0:
+
+                    rep = 'NM:i:{}'.format(dvalue)
+                    output_line = output_line.replace(data[13], rep)
+
+                else:
+                    rep = '{}\tNM:i:{}'.format(data[12], dvalue)
+                    output_line = output_line.replace(data[12], rep)
+
+                output.write(output_line)
+
+            else:
+
+                output.write(line)
