@@ -302,7 +302,7 @@ def lookup_taxonomy(matched_fastq: Path, matched_sam: Path,  annotated: Path,
 
     return viruses, bacteria, euks
 
-def extract_to_fast(fastq: Path, fasta: Path, output: Path, tempdir: Path):
+def extract_to_fast(fastq: Path, fasta: Path, tempdir: Path) -> Path:
 
     def subseq(infile: Path, parent: Path, outfile: Path):
 
@@ -342,6 +342,9 @@ def extract_to_fast(fastq: Path, fasta: Path, output: Path, tempdir: Path):
 
             SeqIO.write(sorted_records, out, 'fasta')
 
+    outpath = fastq.with_suffix('.uniq.fasta')
+    fasta = fastq.with_suffix('.fasta')
+
     fastq_to_fasta(fastq, fasta)
 
     with tempfile.TemporaryDirectory(dir=str(tempdir)) as ephemeral:
@@ -360,11 +363,13 @@ def extract_to_fast(fastq: Path, fasta: Path, output: Path, tempdir: Path):
 
         sequniq(cropped, uniq)
 
-        subseq(uniq, fasta, output)
+        subseq(uniq, fasta, outpath)
+
+    return outpath
 
 @logtime('SNAP alignment to NT and ribosome')
 def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path,
-         ribo_dir: Path, cores: int, edit_distance: int, cache_reset,
+         ribo_dir: Path, cores: int, edit_distance: int,
          comprehensive: bool, temp_dir: Path):
 
     basef = Path(subtracted.stem)
@@ -388,9 +393,11 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path,
 
     with ProcessPoolExecutor(max_workers=2) as ppe1:
 
-        ppe1.submit(extract_headers, cutadapt_fastq, matched, fulllength_matched_fastq)
+        ppe1.submit(extract_headers,
+                    cutadapt_fastq, matched, fulllength_matched_fastq)
 
-        ppe1.submit(extract_headers, cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
+        ppe1.submit(extract_headers,
+                    cutadapt_fastq, unmatched, fulllength_unmatched_fastq)
 
     viruses, bacteria, euks = lookup_taxonomy(fulllength_matched_fastq, matched,
                                               annotated, workdir, tax_db_dir)
@@ -412,14 +419,10 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path,
         for outtype in ('Accession', 'Genus', 'Species', 'Family'):
             ppe2.submit(table_generator, 'SNAP', outtype, viruses)
 
-    if comprehensive:
 
-        viruses_fastq.write_text(annotated_to_fastq(viruses, True))
+    viruses_fastq.write_text(annotated_to_fastq(viruses, True))
 
-        # output of this given to denovo assembly and RAPSearch
-        extract_to_fast(fulllength_unmatched_fastq,
-                        fulllength_unmatched_fastq.with_suffix('.fasta'),
-                        fulllength_unmatched_fastq.with_suffix('.uniq.f1.fasta'),
-                        temp_dir)
+    # output of this given to denovo assembly and RAPSearch
+    uniq_fasta = extract_to_fast(fulllength_unmatched_fastq, temp_dir)
 
-    return viruses, viruses_fastq, fulllength_unmatched_fastq.with_suffix('.uniq.f1.fasta')
+    return viruses, viruses_fastq, uniq_fasta

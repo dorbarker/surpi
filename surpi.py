@@ -399,8 +399,8 @@ def surpi(sample: Path, workdir: Path, temp_dir: Path, edit_distance: int,
     viruses, viruses_fastq, uniqunmatched = snap(subtracted_fastq, workdir,
                                                  snap_db_dir, tax_db_dir,
                                                  ribo_dir, cores,
-                                                 edit_distance, cache_reset,
-                                                 comprehensive, temp_dir)
+                                                 edit_distance, comprehensive,
+                                                 temp_dir)
 
     if comprehensive:
 
