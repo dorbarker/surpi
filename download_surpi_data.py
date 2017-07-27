@@ -129,12 +129,7 @@ def load_lookup(gi_acc: Path) -> Dict[str, str]:
 
             gi, acc_ver = line.strip().split()
 
-            try:
-                acc, ver = acc_ver.split('.')
-
-            except ValueError:  # 119 Accessions do not have a version number
-
-                acc = acc_ver
+            acc, *ver = acc_ver.split('.')
 
             lookup[gi] = acc
 
@@ -290,6 +285,18 @@ def organize_data(ncbi: Path, curated: Path, reference: Path) -> None:
         subprocess.check_call([str(arg) for arg in splitfasta])
 
         for chunk in nt.parent.glob('*.[0-9]*'):
+
+            records = []
+            with chunk.open('r') as inchunk:
+                for rec in SeqIO.parse(inchunk, 'fasta'):
+                    acc, *ver = rec.id.split('.')
+                    rec.description = ''
+                    rec.id = acc
+
+                    records.append(rec)
+
+            with chunk.open('w') as outchunk:
+                SeqIO.write(records, outchunk, 'fasta')
 
             try:
 
