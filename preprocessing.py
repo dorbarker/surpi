@@ -2,6 +2,7 @@
 trimming read lengths, and DUST masking sequence.
 '''
 import tempfile
+import shutil
 import subprocess
 from itertools import chain
 from pathlib import Path
@@ -129,6 +130,6 @@ def preprocess(infile: Path, workdir: Path, tempdir: Path, adapter_set: str,
 
         dust(cropped, dusted)
 
-        dusted.with_suffix('.dusted.fastq').rename(preproc)
+        shutil.move(str(dusted.with_suffix('.dusted.fastq')), str(preproc))
 
     return preproc

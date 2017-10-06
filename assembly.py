@@ -1,3 +1,4 @@
+import shutil
 import subprocess
 import tempfile
 from typing import List, Dict
@@ -48,7 +49,7 @@ def abyss(unmatched_addvir: Path, length: int, cores: int, kmer: int,
             adjust_fasta(mini, kmer, barcode, contig_cutoff)
 
             new_name = workdir / mini.name
-            mini.rename(new_name)
+            shutil.move(str(mini), str(new_name))
 
             to_cat.append(new_name)
 
