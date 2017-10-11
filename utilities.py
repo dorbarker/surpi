@@ -87,7 +87,7 @@ def write_fastq_generators(filepath: Path, *fastqs):
 
     with filepath.open('w') as out:
         lines = ('{}\n'.format(line) for line in chain.from_iterable(fastqs))
-        out.write(lines)
+        out.writelines(lines)
 
 def fastq_to_fasta(fastq_path: Path, fasta_path: Path) -> None:
     '''Reads a FASTQ file located at fastq_path and writes
