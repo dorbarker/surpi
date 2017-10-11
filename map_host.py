@@ -3,7 +3,7 @@
 import tempfile
 import subprocess
 from pathlib import Path
-from utilities import user_msg, logtime, annotated_to_fastq
+from utilities import user_msg, logtime, write_fastq_generators, annotated_to_fastq
 
 def vmtouch(snap_db: Path) -> bool:
     '''Calls vmtouch to check if the SNAP database is loaded into memory'''
@@ -74,6 +74,8 @@ def host_subtract(preprocessed: Path, snap_db_dir: Path, edit_distance: int,
 
             to_subtract = temp_output
 
-        subtracted_fastq.write_text(annotated_to_fastq(to_subtract, False))
+        fastq_lines = annotated_to_fastq(to_subtract, False)
+
+        write_fastq_generators(subtracted_fastq, fastq_lines)
 
     return subtracted_fastq

@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 from multiprocessing import cpu_count
 from typing import List, Tuple, Union
-from utilities import logtime, annotated_to_fastq, fastq_to_fasta, sam_to_fasta, user_msg
+from utilities import logtime, annotated_to_fastq, fastq_to_fasta, sam_to_fasta, user_msg, write_fastq_generators
 from Bio import SeqIO
 from taxonomy_lookup import taxonomy_lookup
 from table_generator import table_generator
@@ -93,8 +93,10 @@ def snap_unmatched(infile: Path, workdir: Path, tempdir: Path,
             subprocess.check_call([str(arg) for arg in snap_cmd if arg])
 
             update_sam.compare_sam(tmp_sam, prev_sam)
-            lines =  annotated_to_fastq(prev_sam, True) + annotated_to_fastq(prev_sam, False)
-            tmp_fastq.write_text(lines)
+
+            write_fastq_generators(tmp_fastq,
+                                   annotated_to_fastq(prev_sam, True),
+                                   annotated_to_fastq(prev_sam, False))
 
             first_pass_done = True
 
@@ -207,7 +209,9 @@ def ribo_snap(inputfile: Path, mode: str, cores: int, ribo_dir: Path, tempdir: P
         subprocess.check_call([str(arg) for arg in snap1])
 
         # conversion of sam -> fastq
-        large_out_fq.write_text(annotated_to_fastq(large_out_sam, False))
+        large_out_lines = annotated_to_fastq(large_out_sam, False)
+
+        write_fastq_generators(large_out_fq, large_out_lines)
 
         snap2 = ('snap-aligner', 'single', snap_small, large_out_fq,
                  '-o', small_out, '-t', cores, '-h', 250, '-d', 18, '-n', 200,
@@ -235,7 +239,7 @@ def extract_headers(parentfile: Path, queryfile: Path, output: Path):
             if rec.id in headers:
                 SeqIO.write(rec, out, 'fastq')
 
-def lookup_taxonomy(matched_fastq: Path, matched_sam: Path,  annotated: Path,
+def lookup_taxonomy(matched_fastq: Path, matched_sam: Path, annotated: Path,
                     workdir: Path, tax_db_dir: Path) -> Tuple[Path, Path, Path]:
     '''Looks up the taxonomy of annotated reads'''
 
@@ -269,7 +273,7 @@ def lookup_taxonomy(matched_fastq: Path, matched_sam: Path,  annotated: Path,
             seq_quals.append((fastq_lines[1], fastq_lines[3]))
 
     # sort seq_quals by their fastq sequence name
-    _,  seq_quals = zip(*sorted(zip(fastq_ids, seq_quals)))
+    _, seq_quals = zip(*sorted(zip(fastq_ids, seq_quals)))
 
     # paste
     lines_to_write = (insert_seq_quals_to_line(line, seq_qual)
@@ -302,7 +306,7 @@ def lookup_taxonomy(matched_fastq: Path, matched_sam: Path,  annotated: Path,
 
     return viruses, bacteria, euks
 
-def extract_to_fast(fastq: Path, fasta: Path, tempdir: Path) -> Path:
+def extract_to_fast(fastq: Path, tempdir: Path) -> Path:
 
     def subseq(infile: Path, parent: Path, outfile: Path):
 
@@ -419,8 +423,8 @@ def snap(subtracted: Path, workdir: Path, snap_db_dir: Path, tax_db_dir: Path,
         for outtype in ('Accession', 'Genus', 'Species', 'Family'):
             ppe2.submit(table_generator, 'SNAP', outtype, viruses)
 
-
-    viruses_fastq.write_text(annotated_to_fastq(viruses, True))
+    viruses_lines = annotated_to_fastq(viruses, True)
+    write_fastq_generators(viruses_fastq, viruses_lines)
 
     # output of this given to denovo assembly and RAPSearch
     uniq_fasta = extract_to_fast(fulllength_unmatched_fastq, temp_dir)
