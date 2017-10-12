@@ -80,7 +80,11 @@ def annotated_to_fastq(annotated: Path, matches: bool) -> str:
     with annotated.open('r') as annot:
         for line in annot:
             if line and not line.startswith('@'):
-                yield fastq(line)
+
+                result = fastq(line)
+
+                if result:
+                    yield result
 
 def write_fastq_generators(filepath: Path, *fastqs):
 
