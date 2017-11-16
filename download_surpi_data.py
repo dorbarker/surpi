@@ -39,6 +39,7 @@ def arguments():
 
     parser.add_argument('--lookup',
                         type=Path,
+                        required=True,
                         help='Path to gi -> accession lookup table')
 
     parser.add_argument('--overwrite',
